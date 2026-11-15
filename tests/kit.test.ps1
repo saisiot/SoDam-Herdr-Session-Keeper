@@ -94,6 +94,20 @@ $r = RunInstall @('-NoKey')
 $kj2 = [IO.File]::ReadAllText($keys, [Text.Encoding]::UTF8)
 Check '재설치: 성공 + 키 연결 한 줄만 유지 + 옛 프로그램 백업 생성' ($r.code -eq 0 -and ([regex]::Matches($kj2, 'mod\.open:session-keeper')).Count -eq 1 -and (Test-Path (Join-Path $inst '_backup')))
 
+# 5b) 단축키 변경: 설치 폴더에 set-key.ps1, -Key 로 바꾸기, 안 주면 유지, 겹치거나 못 쓰는 키는 설치 전에 거부
+Check '설치본에 set-key.ps1 이 들어 있다' (Test-Path -LiteralPath (Join-Path $inst 'set-key.ps1'))
+$kb = [IO.File]::ReadAllText($keys, [Text.Encoding]::UTF8)
+$r = RunInstall @('-Key', 'palette.open')
+Check '못 쓰는 -Key 는 설치 전에 거부(코드 1), keys.json 불변' ($r.code -eq 1 -and $r.out -match 'palette\.open' -and [IO.File]::ReadAllText($keys, [Text.Encoding]::UTF8) -eq $kb)
+$r = RunInstall @('-Key', 'ctrl-shift-p')
+Check '다른 기능과 겹치는 -Key 는 설치 전에 거부(코드 1), keys.json 불변' ($r.code -eq 1 -and [IO.File]::ReadAllText($keys, [Text.Encoding]::UTF8) -eq $kb)
+$r = RunInstall @('-Key', 'ctrl-alt-r')
+$kj4 = [IO.File]::ReadAllText($keys, [Text.Encoding]::UTF8)
+$mf4 = Get-Content (Join-Path $inst 'kit.install.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+Check '-Key ctrl-alt-r 로 재설치: 키가 바뀌고(옛 ctrl-shift-r 연결 제거) 연결 줄은 1개, 설치 기록에 key 기록' ($r.code -eq 0 -and $kj4.Contains('"ctrl-alt-r": "mod.open:session-keeper"') -and -not $kj4.Contains('"ctrl-shift-r"') -and ([regex]::Matches($kj4, 'mod\.open:session-keeper')).Count -eq 1 -and $mf4.key -eq 'ctrl-alt-r')
+$r = RunInstall @()
+Check '-Key 없이 다시 설치해도 바꾼 키(ctrl-alt-r)를 유지' ($r.code -eq 0 -and [IO.File]::ReadAllText($keys, [Text.Encoding]::UTF8) -eq $kj4)
+
 # 6) 제거(데이터 보존) -> 전체 삭제
 [IO.File]::WriteAllText((Join-Path $inst 'session-map.json'), '{}')
 $u = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $pl 'uninstall.ps1') -InstallDir $inst -HerdrHome $hh 2>&1 | Out-String

@@ -4,7 +4,7 @@
 
 > **In one sentence**: A Windows tool that helps you pick up your AI conversations (Claude Code · Codex) again from a list after the computer shuts down or a Herdr window suddenly closes, and that also fixes the "Herdr never updates while it stays open" problem.
 
-- Document version: kit 1.0.0 · written 2026-11-11
+- Document version: kit 1.1.0 · written 2026-11-15
 - This document is written so that **people who are new to computers and AI tools** can follow it. If you meet an unfamiliar word, read [2. Glossary](#2-glossary) first.
 - The same content is in four files: `README.md` (Korean), `README.en.md` (English), `README.html` (Korean, for web browsers) and `README.en.html` (English, for web browsers). The HTML files are generated from the md files, so the content is always the same (see [12. Files and documents](#12-files-and-documents)).
 - Note: the buttons and tabs of the Session Keeper window are in Korean. This document shows the Korean label in `backticks` next to the English meaning.
@@ -127,7 +127,7 @@ People who use Herdr on Windows and run several jobs at once with Claude Code or
 
 ## 4. How to download
 
-> **Current status (2026-11-11)**: this kit is published in the GitHub repository <https://github.com/sodam-ai/Herdr_Session-Keeper>. Get it with the methods in 4.3 below.
+> **Current status (2026-11-11)**: this kit is published in the GitHub repository <https://github.com/sodam-ai/SoDam-Herdr-Session-Keeper>. Get it with the methods in 4.3 below.
 
 ### 4.1 Getting Herdr
 
@@ -146,7 +146,7 @@ People who use Herdr on Windows and run several jobs at once with Claude Code or
 
 At the top level of the repository you will find `.claude-plugin` (the marketplace list) and `plugins\herdr-session-keeper` (the install kit). The installer is `plugins\herdr-session-keeper\install.cmd`.
 
-1. On the repository page click the green **Code** button → **Download ZIP**, or, if you have git, run `git clone https://github.com/sodam-ai/Herdr_Session-Keeper.git`.
+1. On the repository page click the green **Code** button → **Download ZIP**, or, if you have git, run `git clone https://github.com/sodam-ai/SoDam-Herdr-Session-Keeper.git`.
 2. Move the downloaded folder (or ZIP file) to the PC where you want to install (skip this if you downloaded on that PC).
 3. On the target PC **extract it completely.** (Do not run it from inside the zip file. It cannot find the `payload` folder and stops with "installation files are missing".)
 4. It was tested with Korean characters and spaces in the folder path, but an English-only path is recommended.
@@ -166,7 +166,7 @@ With either method you can first do a **check only**. The check changes nothing 
 In Claude Code, type the two lines below one at a time. This repository is the marketplace itself.
 
 ```
-/plugin marketplace add sodam-ai/Herdr_Session-Keeper
+/plugin marketplace add sodam-ai/SoDam-Herdr-Session-Keeper
 /plugin install herdr-session-keeper@herdr-session-keeper-market
 ```
 
@@ -215,7 +215,8 @@ It only checks Node.js, Herdr, the settings folder and any existing install in a
 | `-HerdrApp <path>` | Location of `herdr-app.exe` (when automatic search fails) |
 | `-TaskName <name>` | Task Scheduler task name (default `HerdrSessionKeeper-Watchdog`) |
 | `-NoTask` | Do not register a Task Scheduler task |
-| `-NoKey` | Do not bind `Ctrl+Shift+R` (use `Ctrl+Shift+P` → `mod.open session-keeper` instead) |
+| `-Key <key>` | Shortcut that opens the Session Keeper window (e.g. `ctrl-alt-r`). If omitted, an already-bound key is kept; if none, `Ctrl+Shift+R`. Stops before installing if the key is already used or not allowed ([5.8](#58-changing-the-shortcut-key)) |
+| `-NoKey` | Do not bind a shortcut (use `Ctrl+Shift+P` → `mod.open session-keeper` instead) |
 | `-Launcher` | (optional) Connect the Herdr shortcuts to the launcher ([8.5](#85-how-to-use-automatic-app-updates)) |
 | `-RestartKeeper` | Stop a keeper that is already running and start it again with the new code (the watchdog restarts it within a minute) |
 | `-Force` | Replace a Session Keeper installed in **another location** with this install |
@@ -238,6 +239,35 @@ At install time it **finds the following on that PC** and records them in `kit.e
 | Codex data | environment variable `CODEX_HOME`, `%USERPROFILE%\.codex`, `%USERPROFILE%\.codex_runtime` (all that exist) |
 
 To move the install, install again at the new place with `-InstallDir newplace` and remove the old place with `uninstall.ps1 -InstallDir oldplace`.
+
+### 5.8 Changing the shortcut key
+
+The Session Keeper window opens with `Ctrl+Shift+R` by default. **Inside the window**, press the **[단축키]** (shortcut) button on the top row. Press a suggested key, type the key you want into the input box and press [적용] (apply) or Enter, or press [직접 누르기] (press it yourself) and then the key combination you want. A key that Herdr already uses for something else is refused; only a second confirmation press releases that function and overwrites it. From the command line, run `set-key.ps1` in the install folder (you can also choose it from the start with `-Key` at install time).
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\HerdrSessionKeeper\app\set-key.ps1" -Show
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\HerdrSessionKeeper\app\set-key.ps1" -Key ctrl-alt-r
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\HerdrSessionKeeper\app\set-key.ps1" -Reset
+```
+
+| Option | What it does |
+|---|---|
+| `-Show` | Shows the key that is bound now (changes nothing) |
+| `-Key <key>` | Changes to that key. You may write `ctrl-alt-r` or `Ctrl+Alt+R` |
+| `-Reset` | Goes back to the default key `Ctrl+Shift+R` |
+| `-Replace` | If the key you want is already used by another function, removes only that one binding line and binds it to Session Keeper (the original is backed up) |
+| `-Remove` | Removes only the shortcut binding (you can still open it with the palette `Ctrl+Shift+P` → `mod.open session-keeper`) |
+| `-DryRun` | Only checks whether the key can be used; writes nothing |
+| `-HerdrHome <path>` | Give the Herdr settings folder yourself (when run from the install folder it uses the location in `kit.env` automatically) |
+
+Safety rules:
+
+- If the key you want is **already used by Herdr for another function, nothing is changed by default** and you are told which function it clashes with. Only `-Replace` (in the window: press [덮어쓰기] (overwrite) twice) releases that one line.
+- Allowed keys: modifiers (`ctrl`, `alt`, `shift`) plus English letters, digits, symbols (`,` `.` `/` `[` `]` etc.), `f1`-`f12`, arrow keys, `pageup`, `tab`, `space`, etc. `F1`-`F12` may be used alone. You may write `Ctrl+Alt+K` or `ctrl-alt-k`.
+- The essential terminal keys (`Ctrl+C`, `Ctrl+D`, `Ctrl+Z`) and letter keys without Ctrl or Alt are refused. Other `Ctrl+letter` keys are allowed, but you are told that the key will stop working inside the terminal once bound.
+- If the edited result would not be valid JSON, the file is left as it was and the script stops. The first time, the original is backed up as `keys.json.bak-before-session-keeper-kit`.
+- Installing again (an update) **keeps the changed key** unless you pass `-Key`. Uninstalling (`uninstall.ps1`) also removes the changed key.
+- If Herdr does not notice the change right away, close and reopen Herdr. (Whether Herdr re-reads `keys.json` instantly has not been verified.)
 
 ---
 
@@ -293,7 +323,7 @@ Press `Ctrl+Shift+R` inside Herdr. Press it again or press `Esc` to close. If it
 
 ### 8.2 Screen layout
 
-Top line: title · 3 tabs · search box · **Refresh** (`새로고침`) / second line: tools of the tab / list / bottom: status and shortcut hints. It refreshes automatically every 20 seconds (every 5 seconds while "restore all" is running).
+Top line: title · 3 tabs (with counts, as one segmented control) · search box · **Shortcut** (`단축키`) · **Refresh** (`새로고침`) / second line: tools of the tab / list / below the list: a result notice (done, needs attention and in-progress are told apart by color and text, and you can close it with the close button) / bottom: keyboard hints. When the list is empty, loading or failed to load, a notice card gives the reason and a next-step button. While an action runs, the main buttons (restore, apply) are dimmed to prevent double clicks, and an action that is hard to undo turns the button to a warning color and asks "press once more …". It refreshes automatically every 20 seconds (every 5 seconds while "restore all" is running).
 
 | Tab | What it shows | Shortcut |
 |---|---|---|
@@ -448,8 +478,9 @@ node "<install location>\sessions.mjs" <command>
 ### 10.3 Install and uninstall (`install.ps1`, `uninstall.ps1`)
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-session-keeper\install.ps1 [-Check] [-InstallDir path] [-HerdrHome path] [-HerdrApp path] [-TaskName name] [-NoTask] [-NoKey] [-Launcher] [-RestartKeeper] [-Force]
+powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-session-keeper\install.ps1 [-Check] [-InstallDir path] [-HerdrHome path] [-HerdrApp path] [-TaskName name] [-NoTask] [-Key key] [-NoKey] [-Launcher] [-RestartKeeper] [-Force]
 powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-session-keeper\uninstall.ps1 [-InstallDir path] [-HerdrHome path] [-TaskName name] [-RemoveData]
+powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-session-keeper\set-key.ps1 [-Show | -Key key | -Reset | -Remove] [-Replace] [-DryRun] [-HerdrHome path]
 ```
 
 ### 10.4 Other tools and tests
@@ -466,7 +497,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-session-keeper
 ### 10.5 Inside Claude Code
 
 ```
-/plugin marketplace add sodam-ai/Herdr_Session-Keeper
+/plugin marketplace add sodam-ai/SoDam-Herdr-Session-Keeper
 /plugin install herdr-session-keeper@herdr-session-keeper-market
 ```
 
@@ -505,6 +536,16 @@ node build-readme.mjs         # 3) if you changed README.md / README.en.md, rebu
 ---
 
 ## 11. Update summary
+
+<details>
+<summary><b>Kit 1.1.0 (2026-11-15) — shortcut change · window UI refresh · repository rename</b></summary>
+
+- **Change the shortcut**: change the key that opens the window with the **[단축키]** (shortcut) button in the Session Keeper window (input box, suggested keys, "press the key") or with `set-key.ps1` (`-Show` `-Key` `-Reset` `-Remove` `-Replace`). A key already used by another function is refused and only overwritten after confirmation. You can also choose it at install time with `-Key`, and a changed key is kept when you install again.
+- **Window UI refresh**: tabs as one control with counts, button kinds (primary, normal, quiet, warning) with pressed and disabled states, result notices told apart by color and text (closable), notice cards for empty, loading and error states, a repeated explanation shown once, `자동 시도 3/3` (auto attempts 3/3) wording, tidier shortcut wording.
+- **Repository rename**: the GitHub repository is now `SoDam-Herdr-Session-Keeper`, so the install command (`/plugin marketplace add sodam-ai/SoDam-Herdr-Session-Keeper`) was updated. The internal marketplace and plugin names are unchanged.
+- Restore, watchdog and app-update behavior is unchanged.
+
+</details>
 
 <details>
 <summary><b>Kit 1.0.0 (2026-11-11) — install kit and portability</b></summary>
@@ -606,7 +647,7 @@ What is in the top-level project folder:
   plugins\herdr-session-keeper\
     .claude-plugin\plugin.json
     skills\herdr-session-keeper\SKILL.md install-helper skill
-    install.ps1  uninstall.ps1  install.cmd
+    install.ps1  uninstall.ps1  set-key.ps1  install.cmd
     payload\                             program files to be installed + mod\ + VERSION
 ```
 

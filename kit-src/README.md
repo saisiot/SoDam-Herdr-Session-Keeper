@@ -41,7 +41,7 @@ Herdr 앱, 터미널, Claude/Codex 대화 기록은 건드리지 않습니다.
 설치할 때 이 PC 의 `node`, Herdr 앱, `hc`, Herdr 설정 폴더, Claude 설정 폴더(`CLAUDE_CONFIG_DIR` 또는 `%APPDATA%\claude-code` 또는 `~\.claude`) 위치를 찾아 `kit.env` 에 적어 둡니다. 폴더를 옮기거나 다른 PC 에 설치해도 경로가 코드에 박혀 있지 않습니다. 설치 위치를 옮기려면 다시 설치(`-InstallDir 새위치`)한 뒤 옛 위치는 `uninstall.ps1 -InstallDir 옛위치` 로 지우세요.
 
 ## 옵션
-`-InstallDir` `-HerdrHome` `-HerdrApp` `-TaskName` `-NoTask` `-NoKey` `-Launcher`(선택: Herdr 바로가기를 런처에 연결해 앱이 켜지기 전에 업데이트) `-RestartKeeper` `-Force` `-Check`
+`-InstallDir` `-HerdrHome` `-HerdrApp` `-TaskName` `-NoTask` `-Key 키`(단축키 지정, 나중에 `set-key.ps1` 로 변경) `-NoKey` `-Launcher`(선택: Herdr 바로가기를 런처에 연결해 앱이 켜지기 전에 업데이트) `-RestartKeeper` `-Force` `-Check`
 
 이미 다른 위치에 세션키퍼가 설치되어 있으면 덮어쓰지 않고 멈춥니다. 교체하려면 `-Force`.
 

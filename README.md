@@ -4,7 +4,7 @@
 
 > **한 줄 설명**: 컴퓨터가 꺼지거나 Herdr 창이 갑자기 닫혀도, 하던 AI 대화(Claude Code · Codex)를 목록에서 골라 이어서 시작하게 도와주고, "Herdr 를 켜 둔 채로는 앱 업데이트가 안 되는 문제"까지 해결해 주는 Windows 용 도구입니다.
 
-- 문서 버전: 꾸러미 1.0.0 · 작성일 2026-11-11
+- 문서 버전: 꾸러미 1.1.0 · 작성일 2026-11-15
 - 이 문서는 **처음 컴퓨터·AI 도구를 다루는 분**도 따라 할 수 있게 쓰였습니다. 모르는 말이 나오면 [2. 용어 풀이](#2-용어-풀이)를 먼저 보세요.
 - 같은 내용이 `README.md`(한국어) · `README.en.md`(영어) · `README.html`(한국어, 웹 브라우저용) · `README.en.html`(영어, 웹 브라우저용) 4개 파일에 들어 있습니다. HTML 은 md 에서 자동으로 만들어져 내용이 항상 같습니다(방법은 [12. 파일과 문서 위치](#12-파일과-문서-위치)).
 - 참고: 세션키퍼 창의 버튼·탭 이름은 한국어로 되어 있습니다. 이 문서는 화면에 보이는 이름을 그대로 적었고, 영어 문서(`README.en.md`)는 한국어 이름을 `백틱`으로 함께 적어 두었습니다.
@@ -127,7 +127,7 @@ Windows 에서 Herdr 를 쓰면서 Claude Code 또는 Codex 로 여러 작업을
 
 ## 4. 다운로드 방법
 
-> **현재 상태(2026-11-11)**: 이 꾸러미는 GitHub 저장소 <https://github.com/sodam-ai/Herdr_Session-Keeper> 에 공개되어 있습니다. 아래 4.3 의 방법으로 받으세요.
+> **현재 상태(2026-11-11)**: 이 꾸러미는 GitHub 저장소 <https://github.com/sodam-ai/SoDam-Herdr-Session-Keeper> 에 공개되어 있습니다. 아래 4.3 의 방법으로 받으세요.
 
 ### 4.1 Herdr 받기
 
@@ -146,7 +146,7 @@ Windows 에서 Herdr 를 쓰면서 Claude Code 또는 Codex 로 여러 작업을
 
 저장소 최상위에 `.claude-plugin`(마켓플레이스 목록)과 `plugins\herdr-session-keeper`(설치 꾸러미)가 들어 있습니다. 설치 프로그램은 `plugins\herdr-session-keeper\install.cmd` 입니다.
 
-1. 저장소 페이지의 초록색 **Code** 버튼 → **Download ZIP** 으로 받거나, git 이 있다면 `git clone https://github.com/sodam-ai/Herdr_Session-Keeper.git` 을 실행합니다.
+1. 저장소 페이지의 초록색 **Code** 버튼 → **Download ZIP** 으로 받거나, git 이 있다면 `git clone https://github.com/sodam-ai/SoDam-Herdr-Session-Keeper.git` 을 실행합니다.
 2. 받은 폴더(또는 ZIP 파일)를 설치할 PC 에 옮깁니다(같은 PC 에서 받았다면 건너뜁니다).
 3. 설치할 PC 에서 **압축을 완전히 풉니다.** (압축 파일 안에서 바로 실행하면 안 됩니다. `payload` 폴더를 찾지 못해 "설치 파일이 없습니다" 로 멈춥니다.)
 4. 폴더 경로에 한글·공백이 있어도 동작하도록 시험했지만, 가능하면 영문 경로를 권장합니다.
@@ -166,7 +166,7 @@ Windows 에서 Herdr 를 쓰면서 Claude Code 또는 Codex 로 여러 작업을
 Claude Code 에서 아래 두 줄을 한 줄씩 입력합니다. 이 저장소가 그대로 마켓플레이스입니다.
 
 ```
-/plugin marketplace add sodam-ai/Herdr_Session-Keeper
+/plugin marketplace add sodam-ai/SoDam-Herdr-Session-Keeper
 /plugin install herdr-session-keeper@herdr-session-keeper-market
 ```
 
@@ -215,7 +215,8 @@ Node.js·Herdr·설정 폴더·다른 위치의 기존 설치를 확인만 하�
 | `-HerdrApp <경로>` | `herdr-app.exe` 위치(자동 탐색이 실패할 때) |
 | `-TaskName <이름>` | 작업 스케줄러 작업 이름(기본 `HerdrSessionKeeper-Watchdog`) |
 | `-NoTask` | 작업 스케줄러 등록 안 함 |
-| `-NoKey` | `Ctrl+Shift+R` 연결 안 함(대신 `Ctrl+Shift+P` → `mod.open session-keeper`) |
+| `-Key <키>` | 세션키퍼 창을 여는 단축키(예: `ctrl-alt-r`). 안 주면 이미 연결된 키를 유지하고, 없으면 `Ctrl+Shift+R`. 이미 쓰는 키·못 쓰는 키면 설치 전에 멈춤([5.8](#58-단축키-바꾸기)) |
+| `-NoKey` | 단축키 연결 안 함(대신 `Ctrl+Shift+P` → `mod.open session-keeper`) |
 | `-Launcher` | (선택) Herdr 바로가기를 런처에 연결([8.5](#85-앱-자동-업데이트-쓰는-법)) |
 | `-RestartKeeper` | 이미 돌고 있는 키퍼를 끄고 새 코드로 다시 시작(1분 안에 감시가 다시 켬) |
 | `-Force` | **다른 위치**에 설치된 기존 세션키퍼를 이 설치로 교체 |
@@ -238,6 +239,35 @@ Node.js·Herdr·설정 폴더·다른 위치의 기존 설치를 확인만 하�
 | Codex 데이터 | 환경변수 `CODEX_HOME`, `%USERPROFILE%\.codex`, `%USERPROFILE%\.codex_runtime`(있는 것 모두) |
 
 폴더를 옮기려면 새 위치에 `-InstallDir 새위치` 로 다시 설치하고, 옛 위치는 `uninstall.ps1 -InstallDir 옛위치` 로 지우세요.
+
+### 5.8 단축키 바꾸기
+
+세션키퍼 창은 기본으로 `Ctrl+Shift+R` 로 엽니다. **창 안에서**는 맨 윗줄의 **[단축키]** 버튼을 누르세요. 후보 키를 누르거나, 입력칸에 원하는 키를 쓰고 [적용](Enter)을 누르거나, [직접 누르기] 후 원하는 키 조합을 누르면 됩니다. 다른 기능과 겹치는 키는 거절하고, 확인 버튼을 한 번 더 눌러야만 그 기능을 해제하고 덮어씁니다. 명령어로 바꾸려면 설치된 폴더의 `set-key.ps1` 을 쓰세요(설치할 때 `-Key` 로 처음부터 정해도 됩니다).
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\HerdrSessionKeeper\app\set-key.ps1" -Show
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\HerdrSessionKeeper\app\set-key.ps1" -Key ctrl-alt-r
+powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\HerdrSessionKeeper\app\set-key.ps1" -Reset
+```
+
+| 옵션 | 하는 일 |
+|---|---|
+| `-Show` | 지금 연결된 키를 알려 줌(아무것도 바꾸지 않음) |
+| `-Key <키>` | 그 키로 바꿈. `ctrl-alt-r` 처럼 써도 되고 `Ctrl+Alt+R` 처럼 써도 됨 |
+| `-Reset` | 기본 키 `Ctrl+Shift+R` 로 되돌림 |
+| `-Replace` | 바꾸려는 키를 이미 다른 기능이 쓰고 있을 때, 그 기능의 연결 한 줄만 해제하고 세션키퍼에 연결(원본은 백업) |
+| `-Remove` | 단축키 연결만 끔(팔레트 `Ctrl+Shift+P` → `mod.open session-keeper` 로는 계속 열 수 있음) |
+| `-DryRun` | 쓸 수 있는 키인지만 확인하고 아무것도 쓰지 않음 |
+| `-HerdrHome <경로>` | Herdr 설정 폴더를 직접 지정(설치된 폴더에서 실행하면 `kit.env` 의 위치를 자동으로 씀) |
+
+안전 규칙은 이렇습니다.
+
+- 바꾸려는 키를 Herdr 가 **이미 다른 기능에 쓰고 있으면 기본은 바꾸지 않고**, 어떤 기능과 겹치는지 알려 줍니다. `-Replace`(창에서는 [덮어쓰기]를 두 번 누름)를 써야만 그 한 줄을 해제합니다.
+- 쓸 수 있는 키: 조합 키(`ctrl`, `alt`, `shift`)에 영문·숫자·기호(`,` `.` `/` `[` `]` 등)·`f1`-`f12`·방향키·`pageup`·`tab`·`space` 등을 붙인 것. `F1`~`F12` 는 혼자 써도 됩니다. `Ctrl+Alt+K`, `ctrl-alt-k` 처럼 어떻게 써도 됩니다.
+- 터미널 필수 키(`Ctrl+C`, `Ctrl+D`, `Ctrl+Z`)와 Ctrl·Alt 없는 글자 키는 거부합니다. 다른 `Ctrl+글자` 는 허용하지만, 연결하면 터미널 안에서는 그 키가 동작하지 않는다고 알려 줍니다.
+- 고친 결과가 올바른 JSON 이 아니면 파일을 그대로 두고 멈춥니다. 처음 한 번은 원본을 `keys.json.bak-before-session-keeper-kit` 로 백업합니다.
+- 다시 설치(업데이트)해도 `-Key` 를 주지 않으면 **바꾼 키를 그대로 유지**합니다. 제거(`uninstall.ps1`)는 바꾼 키도 함께 지웁니다.
+- 바꾼 뒤 Herdr 가 바로 인식하지 않으면 Herdr 를 한 번 껐다 켜세요. (Herdr 가 `keys.json` 을 바로 다시 읽는지는 확인하지 못했습니다.)
 
 ---
 
@@ -293,7 +323,7 @@ Herdr 안에서 `Ctrl+Shift+R`. 다시 누르거나 `Esc` 를 누르면 닫힙�
 
 ### 8.2 화면 구성
 
-맨 윗줄: 제목 · 탭 3개 · 검색창 · **[새로고침]** / 둘째 줄: 탭별 도구 / 목록 / 맨 아래: 상태·단축키 안내. 20초마다 자동 새로고침됩니다(전부 복구 중에는 5초).
+맨 윗줄: 제목 · 탭 3개(개수 표시, 한 덩어리) · 검색창 · **[단축키]** · **[새로고침]** / 둘째 줄: 탭별 도구 / 목록 / 목록 아래: 결과 알림(완료·확인 필요·진행을 색과 글자로 구분하고 [닫기]로 직접 닫음) / 맨 아래: 키보드 안내. 목록이 비었거나 불러오는 중이거나 불러오지 못했을 때는 이유와 다음 행동 버튼이 든 안내 카드가 나옵니다. 실행 중에는 복구·적용 같은 주요 버튼이 흐려져 중복 클릭을 막고, 되돌리기 어려운 동작은 버튼이 경고색으로 바뀌며 "한 번 더 누르면 …" 로 확인합니다. 20초마다 자동 새로고침됩니다(전부 복구 중에는 5초).
 
 | 탭 | 보여 주는 것 | 단축키 |
 |---|---|---|
@@ -448,8 +478,9 @@ node "<설치 위치>\sessions.mjs" <명령>
 ### 10.3 설치·제거 (`install.ps1`, `uninstall.ps1`)
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-session-keeper\install.ps1 [-Check] [-InstallDir 경로] [-HerdrHome 경로] [-HerdrApp 경로] [-TaskName 이름] [-NoTask] [-NoKey] [-Launcher] [-RestartKeeper] [-Force]
+powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-session-keeper\install.ps1 [-Check] [-InstallDir 경로] [-HerdrHome 경로] [-HerdrApp 경로] [-TaskName 이름] [-NoTask] [-Key 키] [-NoKey] [-Launcher] [-RestartKeeper] [-Force]
 powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-session-keeper\uninstall.ps1 [-InstallDir 경로] [-HerdrHome 경로] [-TaskName 이름] [-RemoveData]
+powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-session-keeper\set-key.ps1 [-Show | -Key 키 | -Reset | -Remove] [-Replace] [-DryRun] [-HerdrHome 경로]
 ```
 
 ### 10.4 기타 도구와 시험
@@ -466,7 +497,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-session-keeper
 ### 10.5 Claude Code 안에서
 
 ```
-/plugin marketplace add sodam-ai/Herdr_Session-Keeper
+/plugin marketplace add sodam-ai/SoDam-Herdr-Session-Keeper
 /plugin install herdr-session-keeper@herdr-session-keeper-market
 ```
 
@@ -505,6 +536,16 @@ node build-readme.mjs         # 3) README.md / README.en.md 를 고쳤다면 HTM
 ---
 
 ## 11. 업데이트 내용 요약
+
+<details>
+<summary><b>꾸러미 1.1.0 (2026-11-15) — 단축키 변경 · 창 화면 개선 · 저장소 이름 변경</b></summary>
+
+- **단축키 바꾸기**: 세션키퍼 창의 **[단축키]** 버튼(입력칸·후보 키·키 눌러서 정하기)과 `set-key.ps1`(`-Show` `-Key` `-Reset` `-Remove` `-Replace`)로 창을 여는 키를 바꿉니다. 다른 기능과 겹치면 거절하고, 확인 후에만 덮어씁니다. 설치할 때 `-Key` 로 정할 수도 있고, 재설치해도 바꾼 키는 유지됩니다.
+- **창 화면 개선**: 탭 한 덩어리·개수 표시, 버튼 종류(주요·보통·보조·경고)와 눌림·비활성 상태, 색과 글자로 구분되는 결과 알림(닫기 가능), 빈 화면·불러오는 중·오류 안내 카드, 같은 설명 한 번만 보이기, `자동 시도 3/3` 표기, 단축키 표기 정리.
+- **저장소 이름 변경**: GitHub 저장소가 `SoDam-Herdr-Session-Keeper` 로 바뀌어 설치 명령(`/plugin marketplace add sodam-ai/SoDam-Herdr-Session-Keeper`)을 고쳤습니다. 마켓플레이스·플러그인 내부 이름은 그대로입니다.
+- 복구·감시·앱 업데이트 동작은 바뀌지 않았습니다.
+
+</details>
 
 <details>
 <summary><b>꾸러미 1.0.0 (2026-11-11) — 설치 꾸러미·이식성</b></summary>
@@ -606,7 +647,7 @@ node build-readme.mjs         # 3) README.md / README.en.md 를 고쳤다면 HTM
   plugins\herdr-session-keeper\
     .claude-plugin\plugin.json
     skills\herdr-session-keeper\SKILL.md 설치 도우미 스킬
-    install.ps1  uninstall.ps1  install.cmd
+    install.ps1  uninstall.ps1  set-key.ps1  install.cmd
     payload\                             설치될 프로그램 파일 묶음 + mod\ + VERSION
 ```
 

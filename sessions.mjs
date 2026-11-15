@@ -8,6 +8,7 @@
 //   node sessions.mjs forget <세션ID 앞 6자 이상> [--json]      복구 대기 목록에서 빼기 (session-keeper.ps1 -Mode Forget)
 //   node sessions.mjs forget-old [--json]                      "닫히기 직전"이 아닌 옛 복구 대기 항목을 한꺼번에 빼기 (키퍼가 먼저 백업)
 //   node sessions.mjs update-state                             Herdr 앱 업데이트 상태(JSON) / update [--json]: 앱 업데이트 적용(창만 껐다 켬) / update-auto on|off [--json]: 자동 업데이트 켜기/끄기
+//   node sessions.mjs set-key <키|reset|remove> [--replace] [--json]        세션키퍼 창을 여는 단축키 바꾸기(예: ctrl-alt-r). 겹치는 키는 거부 (set-key.ps1 사용)
 //   node sessions.mjs recover <창 주소|all> [--json]            복구 대기 작업을 키퍼로 복구 (빈 셸 입력 / 새 탭). 백그라운드로 시작하고 바로 돌아온다
 //   node sessions.mjs plan start | read                        "전부 복구" 미리보기: 키퍼 -Plan 을 백그라운드로 돌리고(start) 항목별 계획을 읽는다(read: JSON)
 //
@@ -141,6 +142,20 @@ async function main() {
     if (v !== 'on' && v !== 'off') { console.error('사용법: node sessions.mjs update-auto on | off'); process.exit(2); }
     const r = runKeeper('update-auto', v === 'on' ? 'On' : 'Off');
     emit({ ok: r.ok, message: r.ok ? (r.dryrun ? r.message : v === 'on' ? '앱 자동 업데이트를 켰습니다. Herdr 가 켜지는 순간 새 버전이 받아져 있으면 적용합니다.' : '앱 자동 업데이트를 껐습니다. 필요할 때 [앱 업데이트] 버튼으로 직접 적용하세요.') : r.message }, r.ok ? 0 : 1);
+  } else if (cmd === 'set-key') {
+    // 세션키퍼 창을 여는 단축키 바꾸기(화면의 [단축키] 버튼). 실제 일은 set-key.ps1 이 한다(겹치는 키·못 쓰는 키는 거부, 백업·JSON 검증 포함).
+    const v = (args[1] || '').trim();
+    if (!/^[A-Za-z0-9+\-,./;=\[\]]{1,40}$/.test(v)) { emit({ ok: false, message: '키 형식이 올바르지 않습니다. 예: ctrl-alt-r' }, 2); }
+    const script = [join(KDIR, 'set-key.ps1'), join(KDIR, 'kit-src', 'set-key.ps1')].find((p) => existsSync(p));
+    if (!script) emit({ ok: false, message: 'set-key.ps1 을 찾지 못했습니다. 설치 도구를 다시 실행해 주세요.' }, 1);
+    const pa = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script];
+    if (v.toLowerCase() === 'reset') pa.push('-Reset'); else if (v.toLowerCase() === 'remove') pa.push('-Remove'); else pa.push('-Key', v);
+    if (flag('replace')) pa.push('-Replace');
+    if (process.env.SESSIONS_KEEPER_DRYRUN) emit({ ok: true, message: 'DRYRUN ' + pa.join(' ') }, 0);
+    const r = spawnSync('powershell.exe', pa, { encoding: 'utf8', timeout: 20000, windowsHide: true });
+    if (r.error) emit({ ok: false, message: '단축키 도구를 실행하지 못했습니다: ' + String(r.error.message || r.error).slice(0, 120) }, 1);
+    const lines = String(r.stdout || '').split(/\r?\n/).map((s) => s.trim()).filter((s) => s && !s.startsWith('KEY='));
+    emit({ ok: r.status === 0, message: lines.filter((s) => !s.startsWith('keys.json 백업')).join(' ').slice(0, 220) || (r.status === 0 ? '단축키를 바꿨습니다.' : '단축키를 바꾸지 못했습니다.') }, r.status === 0 ? 0 : 1);
   } else if (cmd === 'forget-old') {
     // "닫히기 직전"이 아니어서 자동 복구에서 빠지는 옛 대기 항목을 한꺼번에 뺀다(화면의 [옛 항목 N개 제외]). 키퍼가 지우기 전에 백업을 만든다.
     const olds = () => [...keeperIndex(MAP_FILE).values()].filter((k) => k.pending && k.auto === false);

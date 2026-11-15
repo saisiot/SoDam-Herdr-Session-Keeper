@@ -48,8 +48,8 @@ if ($ours) {
     $KeysFile = Join-Path $HerdrHome 'keys.json'
     if (Test-Path -LiteralPath $KeysFile) {
         $raw = [IO.File]::ReadAllText($KeysFile, [Text.Encoding]::UTF8)
-        $new = [regex]::Replace($raw, '[ \t]*"ctrl-shift-r"\s*:\s*"mod\.open:session-keeper",?\r?\n', '')
-        if ($new -ne $raw) { $ok = $true; try { $null = $new | ConvertFrom-Json } catch { $ok = $false }; if ($ok) { Write-Utf8NoBom $KeysFile $new; Say '  키 연결 제거: Ctrl+Shift+R' } else { Say '  keys.json 수정 결과가 올바르지 않아 그대로 둡니다.' } }
+        $new = [regex]::Replace($raw, '[ \t]*"[^"]+"\s*:\s*"mod\.open:session-keeper",?\r?\n', '')    # 단축키를 바꿨어도(set-key.ps1) 세션키퍼 연결 줄이면 모두 제거
+        if ($new -ne $raw) { $ok = $true; try { $null = $new | ConvertFrom-Json } catch { $ok = $false }; if ($ok) { Write-Utf8NoBom $KeysFile $new; Say '  키 연결 제거: 세션키퍼 단축키' } else { Say '  keys.json 수정 결과가 올바르지 않아 그대로 둡니다.' } }
     }
     Remove-Item -LiteralPath $ModDir -Recurse -Force -ErrorAction SilentlyContinue; Say "  모드 제거: $ModDir"
 } elseif (Test-Path -LiteralPath $ModDir) { Say '  Herdr 모드는 다른 위치의 세션키퍼가 쓰고 있어 그대로 둡니다.' } else { Say '  Herdr 모드: 없음' }
@@ -58,7 +58,7 @@ if ($RemoveData) {
     if ($mf -or (Test-Path -LiteralPath (Join-Path $InstallDir 'kit.env'))) { Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction SilentlyContinue; Say "  설치 폴더 전체 삭제: $InstallDir" }
     else { Say '  설치 기록이 없어 폴더 전체 삭제는 하지 않았습니다.' }
 } else {
-    foreach ($n in @('session-keeper.ps1', 'sessions.mjs', 'scan-monitors.mjs', 'session-keeper-watchdog.vbs', 'herdr-launch.ps1', 'herdr-launch.vbs', 'kit.env', 'kit.install.json', 'README-program.md')) { Remove-Item -LiteralPath (Join-Path $InstallDir $n) -Force -ErrorAction SilentlyContinue }
+    foreach ($n in @('session-keeper.ps1', 'sessions.mjs', 'scan-monitors.mjs', 'session-keeper-watchdog.vbs', 'herdr-launch.ps1', 'herdr-launch.vbs', 'set-key.ps1', 'kit.env', 'kit.install.json', 'README-program.md')) { Remove-Item -LiteralPath (Join-Path $InstallDir $n) -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath (Join-Path $InstallDir 'lib') -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path $InstallDir '_backup') -Recurse -Force -ErrorAction SilentlyContinue
     Say "  프로그램 파일 제거. 복구 대기 기록·로그는 남겼습니다: $InstallDir  (모두 지우려면 -RemoveData)"

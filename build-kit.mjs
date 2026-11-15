@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const ROOT_MODE = !process.argv[2];
 const OUT = ROOT_MODE ? ROOT : resolve(process.argv[2]);
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const PLUGIN = join(OUT, 'plugins', 'herdr-session-keeper');
 const PAYLOAD = join(PLUGIN, 'payload');
 
@@ -32,7 +32,7 @@ writeFileSync(join(PAYLOAD, 'VERSION'), VERSION + '\n');
 
 // 설치 도구(.ps1 은 한글이 있어 UTF-8 BOM + CRLF — Windows PowerShell 5.1 이 한글을 깨지 않게)
 const bomCrlf = (t) => '\uFEFF' + t.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
-for (const n of ['install.ps1', 'uninstall.ps1']) writeFileSync(join(PLUGIN, n), bomCrlf(readFileSync(need(join('kit-src', n)), 'utf8')), 'utf8');
+for (const n of ['install.ps1', 'uninstall.ps1', 'set-key.ps1']) writeFileSync(join(PLUGIN, n), bomCrlf(readFileSync(need(join('kit-src', n)), 'utf8')), 'utf8');
 writeFileSync(join(PLUGIN, 'install.cmd'), readFileSync(need('kit-src/install.cmd'), 'utf8').replace(/\r?\n/g, '\r\n'));
 mkdirSync(join(PLUGIN, '.claude-plugin'), { recursive: true });
 cpSync(need('kit-src/plugin.json'), join(PLUGIN, '.claude-plugin', 'plugin.json'));

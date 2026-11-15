@@ -16,7 +16,7 @@ description: Herdr 세션키퍼(AI 세션 복구 모드 + Herdr 앱 자동 업�
    - Node.js 18+, Herdr 앱, 설정 폴더, 다른 위치의 기존 세션키퍼 유무를 확인합니다. 아무것도 바꾸지 않습니다.
    - "중단:" 으로 끝나면 이유를 그대로 전하고 멈춥니다(임의로 `-Force` 를 붙이지 않습니다).
 2. **사용자에게 확인**: 설치하면 바뀌는 것(아래 "바뀌는 것")을 알리고 진행 여부를 묻습니다.
-3. **설치**: 같은 명령에서 `-Check` 만 뺍니다. 옵션: `-InstallDir` `-HerdrHome` `-HerdrApp` `-NoTask`(자동 실행 작업 안 만듦) `-NoKey` `-Launcher`(바로가기 연결, 선택) `-RestartKeeper` `-Force`(다른 위치 설치 교체).
+3. **설치**: 같은 명령에서 `-Check` 만 뺍니다. 옵션: `-InstallDir` `-HerdrHome` `-HerdrApp` `-NoTask`(자동 실행 작업 안 만듦) `-Key`(단축키 지정, 예: `ctrl-alt-r`) `-NoKey` `-Launcher`(바로가기 연결, 선택) `-RestartKeeper` `-Force`(다른 위치 설치 교체).
 4. **확인**: 설치 끝 메시지, Herdr 에서 `Ctrl+Shift+R` 로 세션키퍼 창이 열리는지(안 되면 `Ctrl+Shift+P` → `mod.open session-keeper`).
 
 ## 바뀌는 것 (설치 전에 사용자에게 알릴 것)
@@ -26,6 +26,7 @@ description: Herdr 세션키퍼(AI 세션 복구 모드 + Herdr 앱 자동 업�
 - Herdr 앱·터미널·Claude/Codex 대화 기록은 건드리지 않습니다. 관리자 권한 불필요.
 
 ## 자주 쓰는 다른 작업
+- **단축키 바꾸기**: `set-key.ps1 -Show`(지금 키) / `-Key ctrl-alt-r`(변경) / `-Reset`(기본 Ctrl+Shift+R) / `-Remove`(연결 해제). 다른 기능과 겹치는 키는 기본 거부, `-Replace` 를 붙이면 그 기능을 해제하고 덮어씁니다. 세션키퍼 창의 [단축키] 버튼에서도 바꿀 수 있습니다.
 - **제거**: `uninstall.ps1` (데이터까지 지우려면 `-RemoveData`)
 - **Herdr 앱 자동 업데이트 끄기/켜기/상태**: `powershell -File "<설치 위치>\session-keeper.ps1" -Mode Update -Auto Off|On|Status`
 - **Herdr 앱 업데이트 지금 적용**(창만 껐다 켬, 터미널은 유지): 같은 명령에 `-Mode Update` 만. **창이 한 번 닫혔다 열리므로 사용자 동의 후에만** 실행합니다.

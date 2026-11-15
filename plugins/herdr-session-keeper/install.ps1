@@ -12,7 +12,8 @@ param(
     [string]$HerdrApp = '',        # herdr-app.exe 경로 (기본: 자동 탐색)
     [string]$TaskName = 'HerdrSessionKeeper-Watchdog',
     [switch]$NoTask,               # 자동 실행 작업(1분마다 점검)을 만들지 않음
-    [switch]$NoKey,                # Ctrl+Shift+R 키 연결을 하지 않음
+    [string]$Key = '',             # 세션키퍼 창을 여는 단축키 (예: ctrl-alt-r). 비우면 이미 연결된 키 유지, 없으면 Ctrl+Shift+R. 나중에 바꾸기: set-key.ps1
+    [switch]$NoKey,                # 단축키 연결을 하지 않음
     [switch]$Launcher,             # (선택) Herdr 바로가기를 런처에 연결: 앱이 켜지기 전에 업데이트 적용. 되돌리기: 키퍼의 -Mode Update -Launcher Uninstall
     [switch]$RestartKeeper,        # 이미 돌고 있는 키퍼를 끄고 새 코드로 다시 켠다(감시 작업이 1분 안에 켬)
     [switch]$Force,                # 다른 위치의 기존 설치를 이 설치로 교체
@@ -101,6 +102,13 @@ if ($conflict.Count -gt 0 -and -not $Force) {
     $conflict | ForEach-Object { Say "    - $_" }
     Fail '덮어쓰지 않았습니다. 기존 것을 쓰시거나, 이 설치로 교체하려면 -Force 를 붙이세요(기존 작업·모드는 이 설치를 가리키도록 바뀝니다).'
 }
+$SetKey = Join-Path $Here 'set-key.ps1'
+if ($Key -and -not $NoKey) {                      # 지정한 단축키가 쓸 수 있는 키인지 설치 전에 확인(겹치면 여기서 멈춤)
+    if (-not (Test-Path -LiteralPath $SetKey)) { Fail "set-key.ps1 이 없습니다: $SetKey" }
+    $kchk = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $SetKey -Key $Key -DryRun -HerdrHome $HerdrHome 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { Fail ("단축키 '$Key' 를 쓸 수 없습니다: " + (($kchk -split "\r?\n" | Where-Object { $_ -and $_ -notmatch '^KEY=' }) -join ' ')) }
+    Say "  단축키: $Key (사용 가능)"
+}
 if ($Check) { Say ''; Say '점검 완료: 설치할 수 있는 환경입니다(아무것도 바꾸지 않았습니다).'; exit 0 }
 
 # ---------- 2) 프로그램 복사 ----------
@@ -117,6 +125,7 @@ New-Item -ItemType Directory -Path (Join-Path $InstallDir 'lib') -Force | Out-Nu
 foreach ($n in @('session-keeper.ps1', 'sessions.mjs', 'scan-monitors.mjs', 'session-keeper-watchdog.vbs', 'herdr-launch.ps1', 'herdr-launch.vbs')) { Copy-Item -LiteralPath (Join-Path $Payload $n) -Destination (Join-Path $InstallDir $n) -Force }
 Get-ChildItem -LiteralPath (Join-Path $Payload 'lib') -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $InstallDir 'lib') -Force }
 if (Test-Path -LiteralPath (Join-Path $Payload 'README-program.md')) { Copy-Item -LiteralPath (Join-Path $Payload 'README-program.md') -Destination $InstallDir -Force }
+if (Test-Path -LiteralPath $SetKey) { Copy-Item -LiteralPath $SetKey -Destination $InstallDir -Force }     # 설치 폴더에서도 단축키를 바꿀 수 있게
 # 환경 파일: 이 PC 에서 찾은 위치를 적어 둔다(작업 스케줄러·Herdr 안은 PATH 가 달라도 동작하게)
 $env0 = @("NODE_DIR=$(Split-Path -Parent $node)")
 if ($hc) { $env0 += "HC_DIR=$(Split-Path -Parent $hc)" }
@@ -144,29 +153,20 @@ if ($chk -match '(?i)error|fail|오류' -and $chk -notmatch '"errors":\s*\[\s*\]
 
 # ---------- 4) 키 연결 (Ctrl+Shift+R) ----------
 Say '== 4/6 키 연결 =='
-$Binding = '"ctrl-shift-r": "mod.open:session-keeper"'
+$keyNow = ''
 if ($NoKey) { Say '  건너뜀(-NoKey). 팔레트: Ctrl+Shift+P -> mod.open session-keeper' }
 elseif (-not (Test-Path -LiteralPath $KeysFile)) { Say '  keys.json 이 없어 건너뜁니다. 팔레트: Ctrl+Shift+P -> mod.open session-keeper' }
+elseif (-not (Test-Path -LiteralPath $SetKey)) { Say '  set-key.ps1 이 없어 건너뜁니다. 팔레트: Ctrl+Shift+P -> mod.open session-keeper' }
 else {
-    $raw = [IO.File]::ReadAllText($KeysFile, [Text.Encoding]::UTF8)
-    $nl = $(if ($raw.Contains("`r`n")) { "`r`n" } else { "`n" })
-    if ($raw.Contains($Binding)) { Say '  이미 연결되어 있습니다 (Ctrl+Shift+R).' }
-    elseif ($raw -match '"ctrl-shift-r"') { Say '  Ctrl+Shift+R 이 이미 다른 용도라 건너뜁니다. 팔레트: Ctrl+Shift+P -> mod.open session-keeper' }
-    else {
-        $m = [regex]::Match($raw, '"global"\s*:\s*\{\r?\n')
-        if (-not $m.Success) { Say '  keys.json 의 "global" 구역을 찾지 못해 건너뜁니다. 팔레트: Ctrl+Shift+P -> mod.open session-keeper' }
-        else {
-            $new = $raw.Insert($m.Index + $m.Length, '    ' + $Binding + ',' + $nl)
-            $okJson = $true; try { $null = $new | ConvertFrom-Json } catch { $okJson = $false }
-            if (-not $okJson) { Say '  keys.json 수정 결과가 올바른 JSON 이 아니라 중단했습니다(파일 그대로).' }
-            else {
-                $bak = "$KeysFile.bak-before-session-keeper-kit"
-                if (-not (Test-Path -LiteralPath $bak)) { Copy-Item -LiteralPath $KeysFile -Destination $bak }
-                Write-Utf8NoBom $KeysFile $new
-                Say '  연결 완료: Ctrl+Shift+R (원본 백업: keys.json.bak-before-session-keeper-kit)'
-            }
-        }
+    # 단축키 처리는 set-key.ps1 이 한다(겹침 검사·백업·JSON 검증 포함). -Key 를 안 주면 이미 연결된 키는 그대로 두고, 없으면 Ctrl+Shift+R.
+    $skArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $SetKey, '-HerdrHome', $HerdrHome)
+    if ($Key) { $skArgs += @('-Key', $Key) }
+    $kout = & powershell.exe @skArgs 2>&1 | Out-String
+    foreach ($ln in ($kout -split "\r?\n")) {
+        if ($ln -match '^KEY=(.*)$') { $keyNow = $Matches[1].Trim() }
+        elseif ($ln.Trim()) { Say ('  ' + $ln.Trim()) }
     }
+    if ($LASTEXITCODE -ne 0 -and -not $keyNow) { Say '  (키 연결은 건너뛰었지만 설치는 계속합니다. 팔레트: Ctrl+Shift+P -> mod.open session-keeper)' }
 }
 
 # ---------- 5) 자동 실행 작업 ----------
@@ -196,12 +196,14 @@ if ($Launcher) {
     Say '  런처 연결(바로가기 -> 업데이트 후 앱 실행)...'
     try { $env:KEEPER_NO_MAIN = $null; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $InstallDir 'session-keeper.ps1') -Mode Update -Launcher Install | ForEach-Object { Say "    $_" } } catch { Say "  경고: 런처 연결 실패: $($_.Exception.Message)" }
 }
-$manifest = [ordered]@{ kit = 'herdr-session-keeper'; version = (Get-Content -LiteralPath (Join-Path $Payload 'VERSION') -ErrorAction SilentlyContinue | Select-Object -First 1); installedAt = (Get-Date -Format 'yyyy-MM-ddTHH:mm:ss'); installDir = $InstallDir; herdrHome = $HerdrHome; modDir = $ModDir; taskName = $(if ($taskOk) { $TaskName } else { '' }); node = $node; herdrApp = $App; hc = "$hc"; keyBinding = (-not $NoKey); launcher = [bool]$Launcher }
+$manifest = [ordered]@{ kit = 'herdr-session-keeper'; version = (Get-Content -LiteralPath (Join-Path $Payload 'VERSION') -ErrorAction SilentlyContinue | Select-Object -First 1); installedAt = (Get-Date -Format 'yyyy-MM-ddTHH:mm:ss'); installDir = $InstallDir; herdrHome = $HerdrHome; modDir = $ModDir; taskName = $(if ($taskOk) { $TaskName } else { '' }); node = $node; herdrApp = $App; hc = "$hc"; keyBinding = (-not $NoKey); key = $keyNow; launcher = [bool]$Launcher }
 Write-Utf8NoBom (Join-Path $InstallDir 'kit.install.json') (($manifest | ConvertTo-Json) + "`r`n")
 if ($taskOk) { try { $ap = Get-Process herdr-app -ErrorAction SilentlyContinue; if ($ap) { Start-Process -FilePath 'wscript.exe' -ArgumentList ('//B "' + (Join-Path $InstallDir 'session-keeper-watchdog.vbs') + '"') -WindowStyle Hidden } } catch {} }
 Say ''
 Say '설치가 끝났습니다.'
-Say '  - Herdr 화면에서 Ctrl+Shift+R 을 누르면 세션키퍼 창이 열립니다 (안 되면 Ctrl+Shift+P -> mod.open session-keeper).'
+if ($keyNow) { Say ('  - Herdr 화면에서 ' + (($keyNow -split '-' | ForEach-Object { if ($_.Length -le 1) { $_.ToUpperInvariant() } else { (Get-Culture).TextInfo.ToTitleCase($_) } }) -join '+') + ' 을 누르면 세션키퍼 창이 열립니다 (안 되면 Ctrl+Shift+P -> mod.open session-keeper).') }
+else { Say '  - Herdr 화면에서 Ctrl+Shift+P -> mod.open session-keeper 로 세션키퍼 창을 엽니다.' }
+Say ('  - 단축키 바꾸기: powershell -File "' + (Join-Path $InstallDir 'set-key.ps1') + '" -Key ctrl-alt-r   (확인 -Show, 원래대로 -Reset)')
 Say '  - 감시 프로그램은 Herdr 가 켜져 있을 때 1분 안에 자동으로 켜집니다.'
 Say ('  - Herdr 앱 자동 업데이트: 기본 켜짐. 끄기: powershell -File "' + (Join-Path $InstallDir 'session-keeper.ps1') + '" -Mode Update -Auto Off')
 Say "  - 제거: uninstall.ps1 (이 폴더에 있음)"

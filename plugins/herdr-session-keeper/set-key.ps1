@@ -92,6 +92,9 @@ if ($Show) {
     Finish $cur 0
 }
 
+# ---------- 쓰기 전 확인: 읽기 전용 파일은 건드리지 않는다(사용자가 일부러 잠가 둔 것일 수 있다) ----------
+if ((Get-Item -LiteralPath $KeysFile).IsReadOnly) { Say "keys.json 이 읽기 전용이라 바꾸지 않았습니다. 바꾸려면 파일의 '읽기 전용' 표시를 직접 해제한 뒤 다시 하세요: $KeysFile"; Finish $cur 1 }
+
 # ---------- 연결 해제 ----------
 if ($Remove) {
     if ($current.Count -eq 0) { Say '이미 연결된 키가 없습니다.'; Finish '' 0 }
@@ -140,7 +143,12 @@ if ($hit.Success -or [regex]::IsMatch($base, '"' + $kq + '"\s*:')) {
 
 $m = [regex]::Match($base, '"global"\s*:\s*\{\r?\n')
 if (-not $m.Success) { Say 'keys.json 에서 "global" 구역을 찾지 못해 바꾸지 않았습니다.'; Finish $cur 1 }
-$new = $base.Insert($m.Index + $m.Length, '    "' + $want + '": "mod.open:session-keeper",' + $nl)
+$tail = $base.Substring($m.Index + $m.Length)
+$indent = '    '
+$im = [regex]::Match($tail, '^([ \t]+)"')
+if ($im.Success) { $indent = $im.Groups[1].Value }                      # 파일이 쓰는 들여쓰기에 맞춘다
+$comma = $(if ($tail -match '^\s*\}') { '' } else { ',' })              # global 이 비어 있으면(마지막 항목) 쉼표 없이
+$new = $base.Insert($m.Index + $m.Length, $indent + '"' + $want + '": "mod.open:session-keeper"' + $comma + $nl)
 if (-not (Test-Json $new)) { Say '수정 결과가 올바른 JSON 이 아니라 중단했습니다(파일 그대로).'; Finish $cur 1 }
 if ($DryRun) { Say "점검: $(Format-Key $want) 로 연결할 수 있습니다(아무것도 쓰지 않음)."; Finish $cur 0 }
 

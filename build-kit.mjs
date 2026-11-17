@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const ROOT_MODE = !process.argv[2];
 const OUT = ROOT_MODE ? ROOT : resolve(process.argv[2]);
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 const PLUGIN = join(OUT, 'plugins', 'herdr-session-keeper');
 const PAYLOAD = join(PLUGIN, 'payload');
 

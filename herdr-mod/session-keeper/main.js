@@ -305,7 +305,7 @@ export default class SessionKeeper extends View {
 
   // 클립보드에 글자를 넣는다. text 는 model.js 가 UUID 로 검증한 ID 또는 resumeCommand(고정 글자 + 검증된 ID)만 받는다(따옴표 등 셸 문자가 들어올 수 없다).
   copyText(text, okMsg, cx) {
-    if (!text || /['"`$;&|<>\r\n]/.test(text)) return;
+    if (!text || /['"`$;&|<>\r\n\u2018\u2019\u201A\u201B\u201C\u201D]/.test(text)) return;
     cx.spawn(async (cx) => {
       try {
         await exec("powershell.exe", ["-NoProfile", "-Command", `Set-Clipboard -Value '${text}'`]);

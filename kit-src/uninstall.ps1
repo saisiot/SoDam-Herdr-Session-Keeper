@@ -1,6 +1,6 @@
 ﻿# uninstall.ps1 - 세션키퍼 제거. install.ps1 이 남긴 설치 기록(kit.install.json)을 읽어 설치한 것만 되돌립니다.
 #   powershell -NoProfile -ExecutionPolicy Bypass -File uninstall.ps1            (프로그램·모드·작업·키 연결 제거, 기록/로그 데이터는 남김)
-#   ... -RemoveData                                                              (설치 폴더 전체 삭제: 복구 대기 기록·로그 포함)
+#   ... -RemoveData                                                              (세션키퍼가 만든 파일 전부 삭제: 복구 대기 기록·로그 포함. 다른 파일이 있으면 폴더는 남김)
 # Herdr 앱·Herdr 의 터미널·다른 모드·Claude/Codex 대화 기록은 건드리지 않습니다.
 param(
     [string]$InstallDir = '',
@@ -55,8 +55,16 @@ if ($ours) {
 } elseif (Test-Path -LiteralPath $ModDir) { Say '  Herdr 모드는 다른 위치의 세션키퍼가 쓰고 있어 그대로 둡니다.' } else { Say '  Herdr 모드: 없음' }
 # 5) 프로그램 파일 (데이터는 기본 보존)
 if ($RemoveData) {
-    if ($mf -or (Test-Path -LiteralPath (Join-Path $InstallDir 'kit.env'))) { Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction SilentlyContinue; Say "  설치 폴더 전체 삭제: $InstallDir" }
-    else { Say '  설치 기록이 없어 폴더 전체 삭제는 하지 않았습니다.' }
+    if ($mf -or (Test-Path -LiteralPath (Join-Path $InstallDir 'kit.env'))) {
+        # 폴더를 통째로 지우지 않는다(실수로 다른 파일이 든 폴더에 설치했더라도 그 파일들을 잃지 않게). 세션키퍼가 만든 파일·폴더만 지우고, 폴더가 비면 폴더도 지운다.
+        foreach ($n in @('session-keeper.ps1', 'sessions.mjs', 'scan-monitors.mjs', 'session-keeper-watchdog.vbs', 'herdr-launch.ps1', 'herdr-launch.vbs', 'set-key.ps1', 'kit.env', 'kit.install.json', 'README-program.md', 'LAST-RESTORE.txt', 'restore-priority.txt')) { Remove-Item -LiteralPath (Join-Path $InstallDir $n) -Force -ErrorAction SilentlyContinue }
+        foreach ($pat in @('session-map.json*', 'session-keeper.*', 'restore-history.log*', '*.tmp-kit', '*.tmp-cs')) { Get-ChildItem -LiteralPath $InstallDir -Filter $pat -File -Force -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue } }
+        foreach ($d in @('lib', '_backup', 'shortcut-backup')) { Remove-Item -LiteralPath (Join-Path $InstallDir $d) -Recurse -Force -ErrorAction SilentlyContinue }
+        $left = @(Get-ChildItem -LiteralPath $InstallDir -Force -ErrorAction SilentlyContinue)
+        if ($left.Count -eq 0) { Remove-Item -LiteralPath $InstallDir -Force -ErrorAction SilentlyContinue; Say "  설치 폴더 삭제(복구 기록·로그 포함): $InstallDir" }
+        else { Say "  세션키퍼가 만든 파일(복구 기록·로그 포함)을 지웠습니다. 다른 파일 $($left.Count)개가 있어 폴더는 그대로 두었습니다: $InstallDir" }
+    }
+    else { Say '  설치 기록이 없어 지우지 않았습니다.' }
 } else {
     foreach ($n in @('session-keeper.ps1', 'sessions.mjs', 'scan-monitors.mjs', 'session-keeper-watchdog.vbs', 'herdr-launch.ps1', 'herdr-launch.vbs', 'set-key.ps1', 'kit.env', 'kit.install.json', 'README-program.md')) { Remove-Item -LiteralPath (Join-Path $InstallDir $n) -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath (Join-Path $InstallDir 'lib') -Recurse -Force -ErrorAction SilentlyContinue

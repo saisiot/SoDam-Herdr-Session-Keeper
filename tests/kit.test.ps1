@@ -121,6 +121,28 @@ Check '-RemoveData: 설치 폴더 전체 삭제' (-not (Test-Path -LiteralPath $
 $null = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $pl 'uninstall.ps1') -InstallDir (Join-Path $T 'never') -HerdrHome $hh 2>&1
 Check '설치된 적 없는 위치를 제거해도 안전하게 끝남(성공 코드, 아무것도 만들지 않음)' ($LASTEXITCODE -eq 0 -and -not (Test-Path (Join-Path $T 'never')))
 
+# 7) 안전 장치(2026-11-16 보안 점검): 남의 파일이 든 폴더·드라이브 루트에는 설치하지 않고, -RemoveData 는 남의 파일을 지우지 않는다
+$instKeep = $inst
+$vic = Join-Path $T '내 문서(소중한 파일)'; New-Item -ItemType Directory -Path (Join-Path $vic 'photos') -Force | Out-Null
+[IO.File]::WriteAllText((Join-Path $vic 'thesis.txt'), 'IRREPLACEABLE'); [IO.File]::WriteAllText((Join-Path $vic 'photos\a.jpg'), 'IMG')
+$inst = $vic
+$r = RunInstall @('-NoTask', '-NoKey')
+Check '남의 파일이 든 폴더에는 설치하지 않고 중단(코드 1), 파일 그대로, 우리 파일 안 만듦' ($r.code -eq 1 -and (Test-Path (Join-Path $vic 'thesis.txt')) -and (Test-Path (Join-Path $vic 'photos\a.jpg')) -and -not (Test-Path (Join-Path $vic 'kit.env')) -and -not (Test-Path (Join-Path $vic 'session-keeper.ps1')))
+$r = RunInstall @('-Check')
+Check '-Check 도 같은 이유로 알려 준다(코드 1)' ($r.code -eq 1)
+$inst = (Split-Path -Qualifier $T) + '\'
+$r = RunInstall @('-Check')
+Check '드라이브 루트에는 설치하지 않는다(코드 1)' ($r.code -eq 1)
+$inst = $instKeep
+$r = RunInstall @('-NoTask', '-NoKey')
+Check '전용 새 폴더에는 정상 설치' ($r.code -eq 0 -and (Test-Path (Join-Path $inst 'kit.env')))
+$r = RunInstall @('-NoTask', '-NoKey')
+Check '같은 폴더에 다시 설치(업데이트)는 그대로 된다' ($r.code -eq 0)
+[IO.File]::WriteAllText((Join-Path $inst 'my-notes.txt'), 'KEEP'); New-Item -ItemType Directory -Path (Join-Path $inst 'my-folder') -Force | Out-Null; [IO.File]::WriteAllText((Join-Path $inst 'my-folder\x.txt'), 'KEEP2')
+[IO.File]::WriteAllText((Join-Path $inst 'session-map.json'), '{}')
+$null = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $pl 'uninstall.ps1') -InstallDir $inst -HerdrHome $hh -TaskName $tn -RemoveData 2>&1
+Check '-RemoveData: 세션키퍼 파일·복구 기록은 지우고, 남의 파일·폴더는 그대로 두며 폴더도 남김' (-not (Test-Path (Join-Path $inst 'kit.env')) -and -not (Test-Path (Join-Path $inst 'session-map.json')) -and -not (Test-Path (Join-Path $inst 'lib')) -and (Test-Path (Join-Path $inst 'my-notes.txt')) -and (Test-Path (Join-Path $inst 'my-folder\x.txt')) -and (Test-Path $inst))
+
 Unregister-ScheduledTask -TaskName $tn -Confirm:$false -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $T -Recurse -Force -ErrorAction SilentlyContinue
 "합계: PASS $script:pass / FAIL $script:fail"

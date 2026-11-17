@@ -83,6 +83,17 @@ $KeysFile = Join-Path $HerdrHome 'keys.json'
 if (-not $InstallDir) { $InstallDir = Join-Path $env:LOCALAPPDATA 'HerdrSessionKeeper\app' }
 $InstallDir = [IO.Path]::GetFullPath($InstallDir)
 $ToolPath = (Join-Path $InstallDir 'sessions.mjs') -replace '\\', '/'
+# 안전 장치: 문서·바탕화면 같은 "남의 파일이 든 폴더"나 드라이브 루트에 실수로 설치하지 않는다
+# (설치한 폴더는 나중에 uninstall -RemoveData 가 정리하므로, 처음부터 우리 것만 들어 있는 폴더여야 안전하다)
+$rootOfDir = [IO.Path]::GetPathRoot($InstallDir)
+if ($rootOfDir -and ($InstallDir.TrimEnd('\') -eq $rootOfDir.TrimEnd('\'))) { Fail "설치 위치가 드라이브 루트($InstallDir)입니다. 전용 폴더를 쓰세요(예: $env:LOCALAPPDATA\HerdrSessionKeeper\app)." }
+if (Test-Path -LiteralPath $InstallDir -PathType Leaf) { Fail "설치 위치가 폴더가 아니라 파일입니다: $InstallDir" }
+if (Test-Path -LiteralPath $InstallDir) {
+    $mineMarkers = @('kit.env', 'kit.install.json', 'session-keeper.ps1', 'session-map.json', 'session-keeper.log')
+    $isMine = $false; foreach ($mk in $mineMarkers) { if (Test-Path -LiteralPath (Join-Path $InstallDir $mk)) { $isMine = $true; break } }
+    $hasOthers = @(Get-ChildItem -LiteralPath $InstallDir -Force -ErrorAction SilentlyContinue).Count -gt 0
+    if ($hasOthers -and -not $isMine) { Fail "설치 위치가 이미 다른 파일이 들어 있는 폴더입니다: $InstallDir  (세션키퍼 전용 빈 폴더나 새 폴더 이름을 쓰세요. 예: $env:LOCALAPPDATA\HerdrSessionKeeper\app)" }
+}
 Say "  설치 위치: $InstallDir"
 if ($InstallDir -match '[^\x20-\x7e]') { Say '  참고: 설치 경로에 한글 등이 있습니다. 대부분 동작하지만 가능하면 영문 경로를 권장합니다.' }
 

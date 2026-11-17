@@ -61,7 +61,7 @@ $ProjDir = Join-Path $ClaudeCfg 'projects'
 $AppExe = $(if ($env:KEEPER_APP_EXE) { $env:KEEPER_APP_EXE } else { Join-Path $env:LOCALAPPDATA 'Programs\herdr-app\herdr-app.exe' })
 $AppProc = if ($env:KEEPER_APP_PROC) { $env:KEEPER_APP_PROC } else { 'herdr-app' }   # 감시할 앱 프로세스 이름(시험에서만 바꿈)
 $ViewFile = Join-Path $(if ($env:HERDR_APP_HOME) { $env:HERDR_APP_HOME } else { Join-Path $env:USERPROFILE '.config\herdr-app' }) 'view.json'
-$UuidRe = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+$UuidRe = '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z'   # \z: 문자열 끝(.NET 의 $ 는 끝에 붙은 줄바꿈 하나도 통과시켜 ID 검사가 느슨해진다)
 $TtlDays = 365
 $IsClaudeTemplate = ($Template -like 'claude*')
 $IsCodexTemplate = ($CodexTemplate -like 'codex*')
@@ -890,7 +890,7 @@ function Get-MonitorLoss($Rows) {
     $res = @()
     try {
         if ($null -eq $script:ShutdownAt) { return $res }
-        $sids = @($Rows | Where-Object { $_.state -eq '성공' } | ForEach-Object { "$($script:SidByAddr[$_.addr])" } | Where-Object { $_ -match '^[0-9a-fA-F-]{36}$' } | Select-Object -Unique)
+        $sids = @($Rows | Where-Object { $_.state -eq '성공' } | ForEach-Object { "$($script:SidByAddr[$_.addr])" } | Where-Object { $_ -match '^[0-9a-fA-F-]{36}\z' } | Select-Object -Unique)
         $scan = Join-Path $Dir 'scan-monitors.mjs'
         $node = (Get-Command node -ErrorAction SilentlyContinue | Select-Object -First 1).Source
         if ($sids.Count -eq 0 -or -not $node -or -not (Test-Path $scan)) { return $res }

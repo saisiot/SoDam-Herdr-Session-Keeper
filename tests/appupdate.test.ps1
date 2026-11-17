@@ -64,3 +64,4 @@ Check '잠겼던 파일은 내용 그대로' ((Get-Content (Join-Path $i6 'zzz.d
 Check '실패하면 받아 둔 새 버전은 그대로 남아 다시 시도할 수 있다' ((Test-Path "$i6.new") -and (Test-Path "$i6.new.json"))
 Check '원복 뒤 .old-* 찌꺼기가 남지 않는다' (@(Get-ChildItem $i6 -Filter '*.old-*' -Recurse).Count -eq 0)
 Finish-Test
+if ($script:fail -gt 0) { exit 1 }

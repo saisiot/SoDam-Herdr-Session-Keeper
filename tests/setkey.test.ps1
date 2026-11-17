@@ -107,6 +107,21 @@ try {
     $r = Run $h8 @('-Key', 'ctrl-,', '-Replace'); $kk = Keys $h8
     Check '-Replace: 마지막 줄이어도 JSON 이 깨지지 않음' ($r.code -eq 0 -and -not $kk.Contains('app.settings') -and [bool]($kk | ConvertFrom-Json) -and ([regex]::Matches($kk, 'mod\.open:session-keeper')).Count -eq 1)
 
+    # 11c) 시험 중 발견·수정(2026-11-15): 빈 global 구역, 들여쓰기, 읽기 전용 파일
+    $h9 = NewHome 'i' "{`n  `"global`": {`n  }`n}`n"
+    $r = Run $h9 @('-Key', 'ctrl-alt-k'); $kk = Keys $h9
+    Check '빈 global 구역에도 연결된다(마지막 항목이라 쉼표 없음, 유효 JSON)' ($r.code -eq 0 -and $kk.Contains('"ctrl-alt-k": "mod.open:session-keeper"') -and [bool]($kk | ConvertFrom-Json))
+    $h10 = NewHome 'j' "{`r`n        `"global`": {`r`n                `"alt-1`": `"space.select:1`"`r`n        }`r`n}`r`n"
+    $r = Run $h10 @('-Key', 'ctrl-alt-k'); $kk = Keys $h10
+    Check '새 줄의 들여쓰기가 기존 파일(16칸)과 같다' ($r.code -eq 0 -and $kk.Contains("`r`n                `"ctrl-alt-k`": `"mod.open:session-keeper`","))
+    $h11 = NewHome 'k' $base; $kf = Join-Path $h11 'keys.json'; $o11 = Keys $h11
+    (Get-Item $kf).IsReadOnly = $true
+    $r = Run $h11 @('-Key', 'ctrl-alt-k')
+    Check '읽기 전용 keys.json 은 바꾸지 않고 안내(코드 1), 내용·읽기 전용 표시 유지, 백업·임시 파일 없음' ($r.code -eq 1 -and (Keys $h11) -eq $o11 -and (Get-Item $kf).IsReadOnly -and -not (Test-Path "$kf.bak-before-session-keeper-kit") -and -not (Test-Path "$kf.tmp-kit"))
+    $r = Run $h11 @('-Show'); Check '읽기 전용이어도 -Show(확인)는 동작' ($r.code -eq 0 -and $r.key -eq 'ctrl-shift-r')
+    $r = Run $h11 @('-Remove'); Check '읽기 전용이면 -Remove 도 거부' ($r.code -eq 1 -and (Keys $h11) -eq $o11)
+    (Get-Item $kf).IsReadOnly = $false
+
     # 12) 세션키퍼 창이 쓰는 명령(sessions.mjs set-key): 가짜 keys.json 으로 실제 변경, 이상한 입력은 거부
     $h7 = NewHome 'g' $base
     $env:HERDR_APP_HOME = $h7
@@ -125,3 +140,4 @@ try {
     Remove-Item -LiteralPath $T -Recurse -Force -ErrorAction SilentlyContinue
 }
 "합계: PASS $script:pass / FAIL $script:fail"
+if ($script:fail -gt 0) { exit 1 }

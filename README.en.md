@@ -4,7 +4,7 @@
 
 > **In one sentence**: A Windows tool that helps you pick up your AI conversations (Claude Code · Codex) again from a list after the computer shuts down or a Herdr window suddenly closes, and that also fixes the "Herdr never updates while it stays open" problem.
 
-- Document version: kit 1.1.0 · written 2026-11-15
+- Document version: kit 1.1.1 · written 2026-11-16
 - This document is written so that **people who are new to computers and AI tools** can follow it. If you meet an unfamiliar word, read [2. Glossary](#2-glossary) first.
 - The same content is in four files: `README.md` (Korean), `README.en.md` (English), `README.html` (Korean, for web browsers) and `README.en.html` (English, for web browsers). The HTML files are generated from the md files, so the content is always the same (see [12. Files and documents](#12-files-and-documents)).
 - Note: the buttons and tabs of the Session Keeper window are in Korean. This document shows the Korean label in `backticks` next to the English meaning.
@@ -210,7 +210,7 @@ It only checks Node.js, Herdr, the settings folder and any existing install in a
 | Option | Meaning |
 |---|---|
 | `-Check` | Only check; change nothing |
-| `-InstallDir <path>` | Program install location (default `%LOCALAPPDATA%\HerdrSessionKeeper\app`) |
+| `-InstallDir <path>` | Program install location (default `%LOCALAPPDATA%\HerdrSessionKeeper\app`). It must be a **dedicated empty or new folder**; a folder that holds other files, or a drive root, is refused |
 | `-HerdrHome <path>` | Herdr settings folder (default: environment variable `HERDR_APP_HOME`, otherwise `%USERPROFILE%\.config\herdr-app`) |
 | `-HerdrApp <path>` | Location of `herdr-app.exe` (when automatic search fails) |
 | `-TaskName <name>` | Task Scheduler task name (default `HerdrSessionKeeper-Watchdog`) |
@@ -474,6 +474,7 @@ node "<install location>\sessions.mjs" <command>
 | `recover <window address\|all>` | Restore waiting work through the keeper (in the background) |
 | `forget <ID>` / `forget-old` | Remove from waiting / remove old items in bulk |
 | `update-state` / `update` / `update-auto on\|off` | App update state / apply / switch automatic on or off |
+| `set-key <key\|reset\|remove> [--replace]` | Changes the shortcut that opens the Session Keeper window (the command the window's [단축키] button uses. A clashing key is refused; only `--replace` overwrites) |
 
 ### 10.3 Install and uninstall (`install.ps1`, `uninstall.ps1`)
 
@@ -536,6 +537,17 @@ node build-readme.mjs         # 3) if you changed README.md / README.en.md, rebu
 ---
 
 ## 11. Update summary
+
+<details>
+<summary><b>Kit 1.1.1 (2026-11-16) — security review fixes</b></summary>
+
+- **Install and uninstall data protection**: install is refused into a folder that holds other files or into a drive root, and `uninstall.ps1 -RemoveData` no longer deletes the whole folder; it deletes only the files Session Keeper created (the folder stays if other files are in it). Before, installing into a wrong folder and then uninstalling with `-RemoveData` also deleted that folder's other files.
+- **Shortcut file protection**: a `keys.json` you locked as read-only is not changed (you are told instead). A shortcut can now be bound in an empty `global` section, and the new line matches the file's indentation.
+- **Stricter ID check**: the conversation-ID check that let a value with a trailing line break pass was fixed, and the window's copy function also refuses Unicode quotes.
+- **Stronger tests**: added a security test (20 command-injection inputs and the ID format) and the test runner now marks a suite as failed whenever it reports failures, whatever the exit code.
+- Restore, watchdog and app-update behavior is unchanged. The keeper program applies the new ID check the next time it restarts.
+
+</details>
 
 <details>
 <summary><b>Kit 1.1.0 (2026-11-15) — shortcut change · window UI refresh · repository rename</b></summary>
@@ -636,7 +648,7 @@ What is in the top-level project folder:
 | `session-keeper-watchdog.vbs` | One-minute watchdog |
 | `install-herdr-mod.ps1` | Script that installs only the mod directly from the repository folder (for developers; separate from the install kit) |
 | `kit-src\`, `build-kit.mjs`, `.claude-plugin\`, `plugins\` | Install-kit sources · generator · generated result (included in the repository) |
-| `tests\` | Tests (`run-all.mjs`) |
+| `tests\` | Tests (`run-all.mjs`, 20 suites). Includes the shortcut test `setkey.test.ps1` and the security test `security.test.ps1` (command injection and ID checks) |
 
 ### 12.2 Inside the install kit
 
@@ -766,10 +778,11 @@ Design principles:
 |---|---|
 | Does it send things to the internet? | **No.** I searched the source code (`.ps1` `.mjs` `.js` `.vbs`) for internet-access code (`http`, `Invoke-WebRequest`, `fetch`, etc.) and **found none** (confirmed by search). A new version of the Herdr app is downloaded by **Herdr itself**; this tool only moves the downloaded files into place. |
 | Does it need administrator rights? | No. It works only within the current user's scope. |
-| Does it handle passwords or API keys? | No. The 27 files of the kit were searched for keys, tokens, passwords, private keys and e-mail strings, with **0 hits**. |
+| Does it handle passwords or API keys? | No. The 28 files of the kit (and also the whole repository of 86 files and the 14 commits of the Git history) were searched for keys, tokens, passwords, private keys and e-mail strings, with **0 hits**. |
 | Does it read conversation content? | To display the list it reads the **title, part of the last request, folder and model** from Claude conversation records (`.jsonl`); for Codex it reads conversation files and part of the **window screen text (`hc read`)**. All of it is processed **only inside this PC** and shown on screen. |
 | Does it send input? | **Yes, in one case only**: the restore that types `claude --resume <ID>` / `codex resume <ID>` into an empty shell window (when all safety rules pass). It types into no other windows. |
 | Does it delete anything? | It **does not delete** conversation records. It only tidies old backups in its own folder (keeping only the latest few) and temporary files. The uninstall tool also deletes only what was installed. |
+| Can a wrong install or uninstall folder make me lose my files? | **No.** A folder that holds other files, or a drive root, is refused at install, and uninstall (`-RemoveData`) deletes only the files Session Keeper created and leaves the folder if other files are in it. |
 
 ### 15.2 Where data is written
 
@@ -785,7 +798,7 @@ Design principles:
 ### 15.3 System areas this tool changes (full list)
 
 1. The install folder (programs, records).
-2. The Herdr settings folder: `mods\session-keeper` and one line in `keys.json` (backup made).
+2. Herdr settings folder: `mods\session-keeper`, and in `keys.json` **the one Session Keeper shortcut line** (a backup is made. Changing the shortcut changes only that line, and a file you locked as read-only is left alone).
 3. One Task Scheduler task.
 4. (during an app update) **Files inside the Herdr install folder** (replaced after a backup, rolled back on failure).
 5. (only if the launcher is installed) desktop and Start-menu shortcuts (changed after a backup).
@@ -797,6 +810,9 @@ It **does not touch** Claude Code settings (`settings.json` etc.) or Codex setti
 - The install and run scripts are run with `-ExecutionPolicy Bypass` **for that one script only.** Before running a kit of unknown origin, read the scripts inside `payload` yourself.
 - It does not access the data of other user accounts on the same PC (only the current user's folders).
 - To install on a shared PC or someone else's PC you need the owner's consent ([chapter 18](#18-legal-copyright-license-and-commercial-use)).
+- **Permissions of the install folder**: the default install location (`%LOCALAPPDATA%`) is writable only by the current user. If you use `-InstallDir` on a place such as drive D:, the folder may be writable by "all users", and then another account could replace the keeper scripts, so check the folder permissions (Security tab).
+- The restore records and logs (`session-map.json`, `session-keeper.log`, etc.) contain conversation IDs, folder paths and task names, so do not share them. They are excluded from the repository by `.gitignore`.
+- The install location must be a "Session Keeper only folder". A folder that holds other files, or a drive root, is refused at install, and `-RemoveData` also deletes only the files Session Keeper created.
 
 ---
 
@@ -809,6 +825,10 @@ It **does not touch** Claude Code settings (`settings.json` etc.) or Codex setti
 | `중단: Herdr 설정 폴더가 없습니다` (stopped: Herdr settings folder missing) | Herdr was never run | Run Herdr once and retry, or `-HerdrHome` |
 | `중단: 설치 파일(payload)이 없습니다` (stopped: installation files missing) | Ran without extracting / only part of the folder was copied | **Extract completely** and move the whole folder, then retry |
 | `중단: … 이미 다른 위치에 세션키퍼가 설치되어 있습니다 … 덮어쓰지 않았습니다` (stopped: already installed elsewhere, not overwritten) | Conflict with an existing install | Keep using the existing one, or use `-Force` to replace |
+| `중단: 설치 위치가 이미 다른 파일이 들어 있는 폴더입니다` / `드라이브 루트입니다` (stopped: the install location holds other files / is a drive root) | You pointed the install at a place that holds someone else's files, such as a documents folder (refused so those files cannot be lost when uninstalling later) | Use a dedicated empty or new folder, e.g. `%LOCALAPPDATA%\HerdrSessionKeeper\app` |
+| `… 는 Herdr 에서 이미 다른 기능(…)에 쓰고 있어 바꾸지 않았습니다` (… is already used by another Herdr function, not changed) | The key you chose is already used by Herdr (refused on purpose) | Choose another key. To release that function and use the key anyway, press [덮어쓰기] (overwrite) twice in the window or run `set-key.ps1 -Key … -Replace` |
+| `keys.json 이 읽기 전용이라 바꾸지 않았습니다` (keys.json is read-only, not changed) | You locked the shortcut settings file as read-only | Remove the "read-only" attribute yourself, then try again (the tool never unlocks it for you) |
+| `이 키는 쓸 수 없습니다: …` (this key cannot be used) | `Ctrl+C/D/Z`, a letter key without Ctrl or Alt, etc. | Use a key that follows the rules in [5.8](#58-changing-the-shortcut-key), as the message says |
 | Script execution is blocked (execution policy / security software) | Company policy, antivirus | Use `install.cmd` or the `powershell -ExecutionPolicy Bypass …` form above. If policy blocks it, ask the administrator |
 | Warning: task registration failed | Task Scheduler restrictions | Install with `-NoTask`, then after starting Herdr run it manually with `-Mode Run` |
 | `Ctrl+Shift+R` does not open | Another feature already uses that key / the mod failed to load | `Ctrl+Shift+P` → `mod.open session-keeper`. Check with `herdr-app check "<mod folder>"` |
@@ -923,6 +943,20 @@ It is only a display problem and does not affect operation. The scripts were tes
 
 </details>
 
+<details>
+<summary><b>Q14. I changed the shortcut but it does not open.</b></summary>
+
+Whether Herdr re-reads the changed `keys.json` right away has not been verified. **Close and reopen Herdr once.** If it still does not work, `Ctrl+Shift+P` → `mod.open session-keeper` always opens it, and in the window's [단축키] you can see the key that is bound now or press the "back to default" button ([5.8](#58-changing-the-shortcut-key)).
+
+</details>
+
+<details>
+<summary><b>Q15. If I choose the wrong install location, will my files be deleted?</b></summary>
+
+No. A **folder that already holds other files**, such as a documents folder, or a **drive root** is refused at install. Even with `-RemoveData` at uninstall, only the files Session Keeper created (including restore records and logs) are deleted, and the folder stays if other files are in it. However, if you already installed into a wrong folder with a very old version (before 1.1.0), check that the folder holds nothing important before uninstalling.
+
+</details>
+
 ---
 
 ## 18. Legal, copyright, license and commercial use
@@ -974,27 +1008,33 @@ Names such as Herdr, Claude, Claude Code, Anthropic, Codex, OpenAI, Node.js, Win
 
 ## 19. Verification status and known limits
 
-### 19.1 What was confirmed (2026-11-11, development PC)
+### 19.1 What was confirmed (2026-11-11 · updated 2026-11-16, development PC)
 
 | Item | Result |
 |---|---|
-| Full regression tests | **17 groups, 0 failures** (last run). Contract, screen logic, robustness, Codex, restore, automatic-start rule, install, app update, etc. |
-| Install kit tests | 41 passed (temporary folders, temporary task names, Korean/space paths; check, conflict refusal, install, reinstall, uninstall) |
+| Full regression tests | **19 of 20 suites passed, 1 intermittent failure** (last full run 2026-11-16). The one that failed is the app-update test that uses a fake app, and 3 separate reruns all passed (cause not confirmed; it wobbles when the computer is busy). Contract, window logic, robustness, Codex, restore, auto-start rule, install, shortcut, security, app update, etc. |
+| Install kit tests | 52 passed (temporary folder, temporary task name, Korean/space paths; check, conflict refusal, install, reinstall, uninstall, refusing a wrong install folder, keeping other files on `-RemoveData`) |
+| Shortcut tests | 54 passed (change, reset, remove; refusing clashes, bad keys and special input; read-only file, empty `global`, parallel runs, backup; fake `keys.json` only) |
+| Security tests | 34 passed (20 kinds of hostile folder names such as quotes, Unicode quotes, `$()`, backtick, line breaks and 5000 characters do not split the command; conversation-ID format check) |
+| Real Herdr window | Opened the real window with `herdr-app do mod.open` and `herdr-app shot` and **confirmed the Restore-pending tab by screenshot** (layout fine, 0 Herdr errors) |
 | Marketplace format check | `claude plugin validate` passed (only a "no author information" warning) |
 | App update | Fake-app tests + confirmed on a separate test Herdr + the development PC's real Herdr replaced and restarted from 0.1.14→0.1.15 (26 terminals kept) |
-| Secret / personal-path scan | 0 hits in the kit's 27 files |
+| Secret / personal-path scan | 0 hits in the kit's 28 files. Also no secrets, personal e-mail or forbidden files in the whole repository of 86 files and the 14 commits of the Git history (all branches and tags); only the fake example path `C:\Users\myname` used in the glossary appears |
 
 ### 19.2 What could not be confirmed (unverified / not run)
 
 - **Installation on another PC**: unverified (only tests imitating it with temporary folders on the development PC).
 - **Windows 10**: unverified.
 - **Actually running `/plugin marketplace add` · `/plugin install` in Claude Code**: unverified (format check only).
-- **Button clicks and broken layouts (responsive) in the Session Keeper window**: apart from command-level checks and screenshot checks, a real-window click test of this final version was not run. There is a record of some clipping in a very narrow window of about 760px (`session-keeper-README.md`).
+- **Button clicks and broken layouts (responsive) in the Session Keeper window**: the Restore-pending tab was confirmed by a real window screenshot, but the **shortcut panel, the Open-windows and Dead-sessions tabs, the button click behavior and narrow windows (a line with many chips may be cut off) are unverified**.
 - **Real installation of the launcher/shortcuts**: not run (only one check with temporary shortcuts).
 - **Codex screen matching**: only fake-data tests. Unverified on a real Codex window.
 - **"Restore all" after a real reboot** and **restoring through `codex resume`**: no reboot test was done (the empty-shell typing and new-tab paths were confirmed with an isolated Herdr restart test).
 - **Whether the update process dies together with the window closing**: not settled (even if it dies, the keeper starts the app instead after 20 seconds).
 - **Intermittent test failure**: the fake-app new-window test sometimes fails (cause not confirmed; it is a fake program for tests and unrelated to the real Herdr).
+- **Keeper log line `루프 오류(계속 진행): null 값 식에서 메서드를 호출할 수 없습니다` (loop error, continuing: cannot call a method on a null value)**: it was logged 30 times in the past, every 5 seconds in 3 short bursts, the last on 2026-11-15 12:53. It has not recurred since and the keeper logs the error and keeps running, but the **cause is unverified**.
+- **Whether Herdr recognizes a changed shortcut immediately**: unverified (if not, close and reopen Herdr).
+- **Folder permissions**: if you install on a place such as drive D: with `-InstallDir`, the folder may be writable by "all users". The default location (`%LOCALAPPDATA%`) is current-user only ([15.4](#154-security-cautions)).
 - lint / type check / build / e2e / browser tests: **not run**, because this project has no such tools.
 
 ### 19.3 Known limits
@@ -1022,7 +1062,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-session-keeper
 | Task Scheduler task | **Only if it points to this install** (left alone if it points elsewhere) |
 | The keeper process of this install | Always |
 | `Ctrl+Shift+R` binding + `mods\session-keeper` | **Only if the mod points to this install** |
-| Program files | Always (restore records and logs are **kept**). With `-RemoveData` the whole install folder is deleted (only when an install record exists) |
+| Program files | Always (restore records and logs are **kept**). With `-RemoveData` the files Session Keeper created (including restore records and logs) are deleted too, and if the folder holds **other files, those files and the folder are left alone** (only when an install record exists) |
 
 It does not touch the Herdr app, terminals, other mods or Claude/Codex conversation records.
 

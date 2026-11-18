@@ -90,6 +90,9 @@ function Write-Log([string]$msg) {
 
 function Set-Prop($o, [string]$n, $v) { $o | Add-Member -NotePropertyName $n -NotePropertyValue $v -Force }
 function Get-Prop($o, [string]$n, $d) { if ($o -and $o.PSObject.Properties[$n]) { return $o.$n } else { return $d } }
+# 시도 횟수: 한도(MaxAttempts)까지만 센다. 예전 버전이 "더 입력하지 말라"는 표시로 쓰던 99 는 영구 잠금이 되어 복구를 막았으므로 "1번 시도함"으로 읽는다.
+function Get-EffAttempts($e) { $n = 0; if ($e -and $e.PSObject.Properties['attempts']) { [void][int]::TryParse("$($e.attempts)", [ref]$n) }; if ($n -ge 99) { return 1 }; if ($n -lt 0) { return 0 }; return $n }
+$script:TypedWaitSec = 180   # 입력한 뒤 이 시간 동안은 실행 확인을 기다리며 같은 창에 다시 입력하지 않는다(큰 대화는 시작이 느리다)
 function Get-BootId { (Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToString('yyyy-MM-ddTHH:mm:ss') }
 function Remove-TempFile([string]$p) { try { [IO.File]::Delete($p) } catch {} }
 
@@ -262,6 +265,35 @@ function Find-CodexUnder([int]$ShellPid, $Children) {
         if ($cur[0] -ne $ShellPid -and (Test-CodexTui $pi)) { return @{ pid = [int]$cur[0]; created = $pi.created; cmd = "$($pi.cmd)" } }
         if ($cur[1] -ge 3) { continue }
         foreach ($c in @($Children[[int]$cur[0]])) { if ($c) { $queue.Enqueue(@([int]$c, $cur[1] + 1)) } }
+    }
+    return $null
+}
+
+# ---------------------------------------------------------------- 창 하나 안에서 AI 찾기
+# hc 의 창 정보에는 pid(창의 뿌리 셸)와 foreground.pid(지금 앞에서 도는 프로그램)가 따로 있다. Claude/Codex 가 앞에서 돌면 foreground.pid 는 그 프로그램
+# 자신이라, "셸 아래 자식"만 찾는 방식(Find-*Under)으로는 찾을 수 없다. (2026-11-18 근본 원인: 열린 Claude 를 하나도 못 찾아 기록이 4일간 멈췄고,
+# 복구 확인도 실패해 시도 99 로 잠겼다.) 그래서 뿌리 셸 pid 부터 찾고, 없으면 foreground.pid(옛 hc 형식: 셸) 아래도 찾고,
+# 마지막으로 맨 앞 프로그램이 곧 Claude 세션/Codex 대화창인지 본다.
+function Get-WindowPids($g) {
+    $out = @()
+    if ($g) {
+        foreach ($v in @($g.pid, $g.foreground.pid)) { if ($v) { $n = 0; if ([int]::TryParse("$v", [ref]$n) -and $n -gt 0 -and ($out -notcontains $n)) { $out += $n } } }
+    }
+    return $out
+}
+function Test-HasWindowPid($g) { return (@(Get-WindowPids $g).Count -gt 0) }
+function Find-ClaudeInWindow($g, $Children, $Sessions) {
+    foreach ($p in @(Get-WindowPids $g)) { $r = Find-ClaudeUnder $p $Children $Sessions; if ($r) { return $r } }
+    $fp = 0
+    if ($g -and $g.foreground.pid -and [int]::TryParse("$($g.foreground.pid)", [ref]$fp) -and $Sessions.ContainsKey($fp)) { return $Sessions[$fp] }
+    return $null
+}
+function Find-CodexInWindow($g, $Children) {
+    foreach ($p in @(Get-WindowPids $g)) { $r = Find-CodexUnder $p $Children; if ($r) { return $r } }
+    $fp = 0
+    if ($g -and $g.foreground.pid -and [int]::TryParse("$($g.foreground.pid)", [ref]$fp)) {
+        $pi = $script:ProcInfo[$fp]
+        if ($pi -and (Test-CodexTui $pi)) { return @{ pid = $fp; created = $pi.created; cmd = "$($pi.cmd)" } }
     }
     return $null
 }
@@ -447,8 +479,8 @@ function Get-CodexLiveSids($Children) {
     foreach ($t in @($ls.terminals)) {
         if ($t.state -ne 'live' -or "$($t.agent)" -notmatch 'codex') { continue }
         $g = Invoke-HcJson @('get', $t.address)
-        if (-not $g -or -not $g.foreground.pid) { continue }
-        $r = Find-CodexUnder ([int]$g.foreground.pid) $Children
+        if (-not $g -or -not (Test-HasWindowPid $g)) { continue }
+        $r = Find-CodexInWindow $g $Children
         if ($r) { $terms[$t.address] = @{ g = $g; root = $r } }
     }
     $sids = @{}
@@ -495,6 +527,25 @@ function Get-MassSet($Items, [int]$Count, [int]$Sec) {
     return $res
 }
 
+# Herdr 앱은 그대로 떠 있는데 창이 한꺼번에 끝난 "사고"인지 판단(입출력 없는 순수 함수).
+#  2026-11-18 05:46: 앱 프로세스는 그대로인데 Claude 창 8개가 종료코드 143 으로 20초 안에 끝났다. 자동 복구는 "앱이 새로 켜질 때"만
+#  시작해서 2시간 넘게 되살아나지 않았다. 이 판정이 true 면 앱 재시작 없이도 복구 창을 연다.
+#  조건: 이번 부팅의 복구 대기(orphan) 항목 중 orphanAt 이 최근 $Sec 초 안인 것이 $Count 개 이상이고,
+#        가장 최근 것도 $SettleSec 초 넘게 지났음(앱이 같이 꺼지는 중이 아니라 계속 떠 있다는 것을 확인할 시간).
+#  사용자가 탭·공간을 직접 닫은 창은 reason=killed 로 목록에서 빠지므로(Get-CloseVerdict) 여기에 세어지지 않는다.
+function Test-IncidentTrigger($Entries, [datetime]$Now, [string]$Boot, [int]$Count, [int]$Sec, [int]$SettleSec) {
+    $ages = @()
+    foreach ($e in @($Entries)) {
+        if ($null -eq $e) { continue }
+        if ("$(Get-Prop $e 'boot' '')" -ne $Boot) { continue }
+        if (-not (Get-Prop $e 'orphan' $false)) { continue }
+        try { $age = ($Now - [datetime](Get-Prop $e 'orphanAt' '')).TotalSeconds } catch { continue }
+        if ($age -ge -5 -and $age -le $Sec) { $ages += $age }
+    }
+    if ($ages.Count -lt $Count) { return $false }
+    return (($ages | Measure-Object -Minimum).Minimum -ge $SettleSec)
+}
+
 # ---------------------------------------------------------------- Snapshot
 $script:CodexWarned = @{}
 function Invoke-Snapshot {
@@ -518,9 +569,9 @@ function Invoke-Snapshot {
         if ($t.state -ne 'live') { continue }
         $seen[$t.address] = $true
         $g = Invoke-HcJson @('get', $t.address)
-        if (-not $g -or -not $g.foreground.pid) { continue }
-        $hit = Find-ClaudeUnder ([int]$g.foreground.pid) $kids $sess
-        $cx = $null; if (-not $hit) { $cx = Find-CodexUnder ([int]$g.foreground.pid) $kids }
+        if (-not $g -or -not (Test-HasWindowPid $g)) { continue }
+        $hit = Find-ClaudeInWindow $g $kids $sess
+        $cx = $null; if (-not $hit) { $cx = Find-CodexInWindow $g $kids }
         $old = $map[$t.address]
         if ($hit) {
             $L = $layout[$t.address]
@@ -624,7 +675,12 @@ function Get-Decision($e, $g, $ctx) {
     $sid = "$($e.sid)"
     if ($sid -notmatch $UuidRe) { return @{ Action = 'SKIP'; Reason = '세션ID 형식 오류'; Retry = $false } }
     if ($ctx.Running.ContainsKey($sid)) { return @{ Action = 'SKIP'; Reason = '같은 대화가 이미 실행 중'; Retry = $false } }
-    if ([int](Get-Prop $e 'attempts' 0) -ge $ctx.MaxAttempts) { return @{ Action = 'SKIP'; Reason = "시도 $($ctx.MaxAttempts)회 초과"; Retry = $false } }
+    $typedAt = "$(Get-Prop $e 'typedAt' '')"
+    if ($typedAt) {                      # 방금 입력했으면 실행 확인을 기다린다(큰 대화는 시작이 느림 - 같은 창에 두 번 입력하거나 새 탭을 또 만들지 않게)
+        $tt = [datetime]::MinValue
+        if ([datetime]::TryParse($typedAt, [ref]$tt)) { $ago = ((Get-Date) - $tt).TotalSeconds; if ($ago -ge 0 -and $ago -lt $script:TypedWaitSec) { return @{ Action = 'SKIP'; Reason = '방금 입력함 - 실행 확인 대기'; Retry = $true } } }
+    }
+    if ((Get-EffAttempts $e) -ge $ctx.MaxAttempts) { return @{ Action = 'SKIP'; Reason = "시도 $($ctx.MaxAttempts)회 초과"; Retry = $false } }
     $chk = $(if ($ctx.ContainsKey('CheckFile')) { $ctx.CheckFile } else { $ctx.ClaudeTemplate })   # Claude/Codex 각자의 대화 파일 확인 여부
     if ($chk -and -not $ctx.JsonlOk) { return @{ Action = 'SKIP'; Reason = '대화 파일(.jsonl)이 없음'; Retry = $false } }
     if ($g -and $g.state -eq 'live') {
@@ -633,11 +689,45 @@ function Get-Decision($e, $g, $ctx) {
         elseif ("$($g.labels.where)" -ne "$($e.where)") { return @{ Action = 'SKIP'; Reason = "창 이름이 다름(기록 $($e.where) / 지금 $($g.labels.where))"; Retry = $false } }
         if ($ctx.HasClaude) { return @{ Action = 'SKIP'; Reason = '그 창에서 다른 Claude 가 실행 중'; Retry = $false } }
         if ($g.foreground.name -ne 'powershell.exe') { return @{ Action = 'SKIP'; Reason = "앞 프로그램이 powershell 아님($($g.foreground.name))"; Retry = $true } }
+        # Herdr 가 앱을 다시 켤 때 옛 Claude 화면 잔상을 다시 그리면, Claude 가 없는데도 이 창을 'claude-code' 앱 창으로 인식한다(hc get 의 status.app).
+        # 이런 창에 hc 로 입력하면 앞에 마우스·키 신호 글자가 섞여 명령이 깨진다(2026-11-18 실창 3개 모두 실패) -> 입력하지 않고 새 탭으로 복구한다.
+        # 위에서 이미 "같은 대화 실행 중 / 다른 Claude 실행 중 / 앞 프로그램이 셸 아님"은 걸렀으므로 같은 대화가 두 번 뜨지 않는다. 옛 창은 닫지 않는다.
+        $app = ''; try { if ($g.status) { $app = "$($g.status.app)" } } catch {}
+        if ($app -and $app -ne 'none') {
+            if ($ctx.AllowCreate) { return @{ Action = 'CREATE'; Reason = "옛 화면 잔상 때문에 Herdr 가 '$app' 앱으로 인식 중이라 입력이 깨짐 - 새 탭으로 복구"; Retry = $false } }
+            return @{ Action = 'SKIP'; Reason = "옛 화면 잔상 창('$app' 로 인식) - 코어 유예 시간 뒤 새 탭으로 복구 예정"; Retry = $true }
+        }
         if ($ctx.LastLine -notmatch '^PS .+>\s*$') { return @{ Action = 'SKIP'; Reason = "빈 PS 프롬프트가 아님: $($ctx.LastLine)"; Retry = $true } }
         return @{ Action = 'TYPE'; Reason = '빈 셸, 입력 가능'; Retry = $false }
     }
     if (-not $ctx.AllowCreate) { return @{ Action = 'SKIP'; Reason = '창이 없음 - 코어 유예 시간 뒤 새 탭으로 복구 예정'; Retry = $true } }
     return @{ Action = 'CREATE'; Reason = '창이 끝나 있음 - 새 탭으로 복구'; Retry = $false }
+}
+
+# 창 화면의 "입력 줄"을 찾는다. Herdr 가 앱을 다시 켤 때 옛 화면(Claude 꼬리 줄 등)을 다시 그리고 그 위에
+# 새 셸 프롬프트를 얹으면 마지막 줄이 프롬프트가 아니라 옛 Claude 안내줄이 된다. 그래서 셸이 놀고 있는(자식 프로세스 없음)
+# 경우에 한해, 마지막 'PS ...>' 줄을 입력 줄로 보고 그 뒤에 남은 선 문자(─)만 지운다. 글자가 더 있으면 사용자가 치던 것이므로 그대로 둔다.
+function Get-PromptLine([string]$Screen, [bool]$ShellIdle = $false) {
+    $lines = @($Screen -split "`r?`n" | Where-Object { $_.Trim() })
+    if ($lines.Count -eq 0) { return '' }
+    $last = "$($lines[-1])"
+    if ($last -match '^PS .+>\s*$') { return $last }
+    if (-not $ShellIdle) { return $last }
+    for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+        $l = "$($lines[$i])"
+        if ($l -match '^(PS [^>\r\n]*>)[\s─-╿]*$') { return $Matches[1] }
+        if ($l -match '^PS .+>') { return $l }      # 프롬프트 뒤에 사용자가 친 글자가 있음 - 빈 프롬프트가 아니다
+    }
+    return $last
+}
+function Test-ShellIdle($g, $Children) {
+    if (-not $g -or -not $Children) { return $false }
+    $p = 0; if (-not ($g.pid -and [int]::TryParse("$($g.pid)", [ref]$p))) { return $false }
+    if ($Children.ContainsKey($p) -and $Children[$p].Count -gt 0) {
+        $kids = @($Children[$p]) | Where-Object { $script:ProcInfo -and $script:ProcInfo.ContainsKey($_) -and $script:ProcInfo[$_].name -notmatch '^(conhost|OpenConsole)\.exe$' }
+        if (@($kids).Count -gt 0) { return $false }
+    }
+    return $true
 }
 
 # 판단용 프로세스 정보는 5초 동안 재사용한다(창마다 새로 조회하면 24개에 1분 가까이 걸림).
@@ -665,9 +755,9 @@ function Get-EntryDecision($e, [bool]$AllowCreate) {
     $g = Invoke-HcJson @('get', $e.addr)
     if ($ctx.CheckFile -and "$($e.sid)" -match $UuidRe) { $ctx.JsonlOk = $(if ($isCodex) { Test-CodexRolloutExists $e } else { Test-SessionFileExists "$($e.sid)" "$($e.cwd)" }) }
     if ($g -and $g.state -eq 'live') {
-        $ctx.HasClaude = [bool]((Find-ClaudeUnder ([int]$g.foreground.pid) $snap.kids $sess) -or (Find-CodexUnder ([int]$g.foreground.pid) $snap.kids))   # 다른 AI(Claude/Codex)가 이미 떠 있으면 입력하지 않는다
-        $scr = (& hc read $e.addr --lines 4 2>$null) -join "`n"
-        $ctx.LastLine = ($scr -split "`r?`n" | Where-Object { $_.Trim() } | Select-Object -Last 1)
+        $ctx.HasClaude = [bool]((Find-ClaudeInWindow $g $snap.kids $sess) -or (Find-CodexInWindow $g $snap.kids))   # 다른 AI(Claude/Codex)가 이미 떠 있으면 입력하지 않는다
+        $scr = (& hc read $e.addr --lines 8 2>$null) -join "`n"
+        $ctx.LastLine = (Get-PromptLine $scr (Test-ShellIdle $g $snap.kids))
     }
     return (Get-Decision $e $g $ctx)
 }
@@ -680,16 +770,16 @@ function Test-ResumeUp([string]$Addr, $Entry = $null, $Kids = $null, $Sess = $nu
     if ($isCodex) {
         # Codex: 화면에 "대화 없음" 오류가 보이면 실패, 아니면 셸 아래에 Codex 대화창 프로세스가 뜬 것으로 성공 확인
         if ($scr -match '(?i)no (saved )?(session|conversation|thread)s? (found|with)') { return 'NOT-FOUND' }
-        if ($g -and $g.foreground.pid) {
+        if ($g -and (Test-HasWindowPid $g)) {
             $k = $(if ($Kids) { $Kids } else { Get-ChildTable })
-            if (Find-CodexUnder ([int]$g.foreground.pid) $k) { return [pscustomobject]@{ sessionId = "$($Entry.sid)"; cwd = "$($Entry.cwd)" } }
+            if (Find-CodexInWindow $g $k) { return [pscustomobject]@{ sessionId = "$($Entry.sid)"; cwd = "$($Entry.cwd)" } }
         }
         if (-not $IsCodexTemplate -and $scr -match '(?m)^RESTORED-') { return 'TEST-OK' }   # 시험용 템플릿 전용
         return $null
     }
-    if ($g -and $g.foreground.pid) {
+    if ($g -and (Test-HasWindowPid $g)) {
         $k = $(if ($Kids) { $Kids } else { Get-ChildTable }); $s = $(if ($Sess) { $Sess } else { Get-ClaudeSessions })
-        $hit = Find-ClaudeUnder ([int]$g.foreground.pid) $k $s
+        $hit = Find-ClaudeInWindow $g $k $s
         if ($hit) { return $hit }
     }
     if ($scr -match 'No conversation found') { return 'NOT-FOUND' }
@@ -733,7 +823,7 @@ function Mark-Done($e, [string]$boot) {
 }
 function Add-Attempt($e) {
     $map = Read-Map
-    if ($map.ContainsKey($e.addr)) { Set-Prop $map[$e.addr] 'attempts' (1 + [int](Get-Prop $map[$e.addr] 'attempts' 0)); Save-Map $map }
+    if ($map.ContainsKey($e.addr)) { Set-Prop $map[$e.addr] 'attempts' (1 + (Get-EffAttempts $map[$e.addr])); Save-Map $map }
 }
 
 # PowerShell 은 ASCII 작은따옴표(') 말고도 ‘ ’ ‚ ‛ 를 작은따옴표로 취급한다. 경로를 '...' 문자열에 넣을 때는 이 다섯 글자를 모두 두 번씩 써야 문자열을 빠져나가지 못한다.
@@ -755,9 +845,10 @@ function Send-ResumeInput($e) {
 # 실행 확인 결과($r)를 기록에 반영한다. 반환: 'OK' | 'NOT-FOUND' | 'TIMEOUT'
 function Complete-Resume($e, $r, [string]$boot) {
     if ($r -and $r -ne 'NOT-FOUND') { Write-Log "$($e.addr) 성공: 실행 확인"; Mark-Done $e $boot; return 'OK' }
-    if ($r -eq 'NOT-FOUND') { Write-Log "$($e.addr) 실패: 대화를 찾을 수 없음"; $m = Read-Map; if ($m.ContainsKey($e.addr)) { Set-Prop $m[$e.addr] 'attempts' 99; Save-Map $m }; return 'NOT-FOUND' }
+    if ($r -eq 'NOT-FOUND') { Write-Log "$($e.addr) 실패: 대화를 찾을 수 없음"; $m = Read-Map; if ($m.ContainsKey($e.addr)) { Set-Prop $m[$e.addr] 'attempts' $MaxAttempts; Save-Map $m }; return 'NOT-FOUND' }   # 대화가 없으면 더 시도해도 소용없다
     Write-Log "$($e.addr) 60초 안에 확인되지 않음 - 화면 확인 필요"
-    $m = Read-Map; if ($m.ContainsKey($e.addr)) { Set-Prop $m[$e.addr] 'attempts' 99; Save-Map $m }   # 중복 입력 방지
+    # 99 로 영구 잠그지 않는다: 시도를 1번 센 것으로 기록하고 입력 시각을 남긴다. 일정 시간 동안은 확인을 기다리고(중복 입력 방지), 그 뒤에도 안 떠 있으면 한도(MaxAttempts)까지 다시 시도한다.
+    $m = Read-Map; if ($m.ContainsKey($e.addr)) { Set-Prop $m[$e.addr] 'attempts' (1 + (Get-EffAttempts $m[$e.addr])); Set-Prop $m[$e.addr] 'typedAt' (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss'); Save-Map $m }
     return 'TIMEOUT'
 }
 
@@ -817,8 +908,8 @@ function New-ResumeTab($e, [string]$boot) {
         Save-Map $map
         return 'OK'
     }
-    Write-Log "$($e.addr) -> $($o.terminal) 확인 실패($(if ($w) { $w } else { '60초 초과' })) - 화면 확인 필요, 이 항목은 더 이상 자동 시도하지 않음"
-    if ($map.ContainsKey($e.addr)) { Set-Prop $map[$e.addr] 'attempts' 99; Save-Map $map }
+    Write-Log "$($e.addr) -> $($o.terminal) 확인 실패($(if ($w) { $w } else { '60초 초과' })) - 화면 확인 필요, 새 탭이 늦게 뜰 수 있어 $($script:TypedWaitSec)초 뒤에 다시 확인(한도까지)"
+    if ($map.ContainsKey($e.addr)) { Set-Prop $map[$e.addr] 'attempts' (1 + (Get-EffAttempts $map[$e.addr])); Set-Prop $map[$e.addr] 'typedAt' (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss'); Save-Map $map }
     return 'TIMEOUT'
 }
 
@@ -837,7 +928,12 @@ function Set-Outcome([string]$Addr, [string]$Where, [string]$State, [string]$Det
 # 직전 종료 정보(원인 추적용): Windows 종료 기록 + 대기 기록 중 한꺼번에 끝난 창 묶음
 function Get-PreviousShutdownInfo {
     $parts = @(); $sdTime = $null
-    try {
+    # PC 를 다시 켠 것이 아니라 Herdr 앱만 다시 켠 경우: 이번 부팅 중에 기록된 창이 있으면 PC 는 그 뒤로 계속 켜져 있었다.
+    # 이때 "Windows 종료 기록"을 보여 주면 며칠 전의 낡은 종료를 직전 종료로 착각하게 된다(2026-11-18 로그).
+    $sameBoot = 0
+    try { $bid0 = Get-BootId; $sameBoot = @((Read-Map).Values | Where-Object { "$($_.boot)" -eq $bid0 }).Count } catch {}
+    if ($sameBoot -gt 0) { $parts += "PC 는 다시 켜지 않았고 Herdr 앱만 다시 켜졌습니다(이번 부팅 중 기록된 창 $sameBoot 개)" }
+    else { try {
         $boot = (Get-CimInstance Win32_OperatingSystem).LastBootUpTime
         $evs = @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; Id = 1074, 41, 6008; StartTime = $boot.AddDays(-2) } -ErrorAction SilentlyContinue)
         $unexpected = @($evs | Where-Object { ($_.Id -eq 41 -or $_.Id -eq 6008) -and [math]::Abs(($_.TimeCreated - $boot).TotalMinutes) -lt 3 }).Count -gt 0
@@ -848,7 +944,7 @@ function Get-PreviousShutdownInfo {
             $kind = if ($sd.Message -match '다시 시작|restart') { '다시 시작' } elseif ($sd.Message -match '전원 끄기|shutdown|power off') { '전원 끄기' } else { '종료' }
             $parts += ('Windows: {0} 요청 {1:HH:mm:ss}' -f $kind, $sdTime)
         } else { $parts += 'Windows: 종료 기록을 찾지 못함' }
-    } catch { $parts += 'Windows 종료 기록 조회 실패' }
+    } catch { $parts += 'Windows 종료 기록 조회 실패' } }
     try {
         $bootId = Get-BootId; $map = Read-Map; $items = @(); $live = 0; $reasons = @{}
         foreach ($e in @($map.Values | Where-Object { $_.boot -ne $bootId -or (Get-Prop $_ 'orphan' $false) })) {
@@ -1172,6 +1268,7 @@ function Invoke-Run {
         $appWasUp = Test-AppAlreadyUp $curApp $script:PrevHb (Get-BootId)
         $nextRecover = Get-Date; $nextSnap = Get-Date; $nextAppUpd = (Get-Date).AddMinutes(1)
         $appGoneSince = $null   # 앱이 꺼진 것을 처음 본 시각(앱이 AppGoneExitSec 넘게 꺼져 있으면 이 감시도 끝낸다)
+        $loopBoot = Get-BootId; $nextIncident = Get-Date; $script:IncidentAt = $null   # 사고 판정용(부팅 ID 는 한 번만 읽는다)
         while ($true) {
           try {
             $now = Get-Date
@@ -1220,6 +1317,18 @@ function Invoke-Run {
                 $script:AppRelaunchTried = $true
                 Write-Log '앱 업데이트 재시작 중 새 창이 20초 넘게 뜨지 않아 세션키퍼가 대신 앱을 켭니다.'
                 try { if (@(Get-AppProcs (Get-AppInstallDir)).Count -eq 0) { Start-AppWindow (Join-Path (Get-AppInstallDir) 'herdr-app.exe') } } catch { Write-Log "대신 켜기 실패: $($_.Exception.Message)" }
+            }
+            # 앱은 그대로인데 창이 한꺼번에 끝난 사고: 앱 재시작을 기다리지 않고 복구 창을 연다(같은 사고로 10분 안에 두 번 열지 않음).
+            if ($appUp -and -not $active -and $now -ge $nextIncident) {
+                $nextIncident = $now.AddSeconds(10)
+                if ((-not $script:IncidentAt -or ($now - $script:IncidentAt).TotalMinutes -ge 10) -and (Test-IncidentTrigger @((Read-Map).Values) $now $loopBoot $MassCount ($MassSec * 4) 45)) {
+                    $script:IncidentAt = $now
+                    $trigger = $now; $active = $true; $quiet = 0; $nextRecover = $now.AddSeconds(10)
+                    $script:Outcome = @{}; $script:WinOpenAt = $now.ToString('HH:mm:ss'); $script:PrevInfo = Get-PreviousShutdownInfo
+                    $script:RecentCutoff = $null; $script:RecentInfo = $null; $script:ShutdownAt = $null
+                    Write-Log "Herdr 앱은 켜진 채로 창이 한꺼번에 끝남을 확인 -> $WindowMin 분 동안 $RoundSec 초 간격으로 복구를 시도합니다."
+                    Write-Log "직전 종료: $($script:PrevInfo)"
+                }
             }
             if ($now -ge $nextSnap -and -not ((Test-AppUpdateBusy) -and (Get-Process -Id (Get-AppUpdateMarkerPid) -ErrorAction SilentlyContinue))) { Invoke-Snapshot; Set-Heartbeat; $nextSnap = (Get-Date).AddSeconds($LoopSec) }
             elseif ($now -ge $nextSnap) { Set-Heartbeat; $nextSnap = (Get-Date).AddSeconds(10) }   # 앱을 껐다 켜는 동안엔 기록을 건너뛴다(창 배치를 못 읽는 순간의 기록을 남기지 않게)

@@ -21,6 +21,7 @@ const SUITES = [
   { key: 'closeverdict', name: '직접 닫은 창은 복구 목록에서 제외 + 자동 복구는 닫히기 직전 창만 (판정 함수, 실제 기록은 읽기 전용)', cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'closeverdict.test.ps1'] },
   { key: 'readme', name: 'README 4종: 한·영 구조 동일, 목차 링크, md 글자 = html 글자', cmd: 'node', args: ['readme.test.mjs'] },
   { key: 'kit', name: '설치 꾸러미: 마켓플레이스·플러그인 생성 + 설치/재설치/충돌 거부/제거 (임시 폴더·임시 작업, 한글·공백 경로)', cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'kit.test.ps1'] },
+  { key: 'detect', name: '창 안 Claude/Codex 탐지(hc 실제 형식)와 복구 시도 횟수 판단 (가짜 프로세스 표, 임시 폴더 사본)', cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'detect.test.ps1'] },
   { key: 'security', name: '보안: 명령 주입 시도(따옴표·$()·유니코드 따옴표 등)와 ID 형식 검사 (문법 분석만, 아무것도 실행하지 않음)', cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'security.test.ps1'] },
   { key: 'setkey', name: '단축키 변경(set-key.ps1): 확인·변경·원래대로·해제, 겹침·잘못된 키 거부, 파일 보존 (가짜 keys.json, 임시 폴더)', cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'setkey.test.ps1'] },
   { key: 'appupdate', name: 'Herdr 앱 업데이트: 폴더 잠김 재현 + 파일 교체·창 재시작·중간 실패 원복 (가짜 exe, 임시 폴더)', cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'appupdate.test.ps1'] },

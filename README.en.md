@@ -4,7 +4,7 @@
 
 > **In one sentence**: A Windows tool that helps you pick up your AI conversations (Claude Code · Codex) again from a list after the computer shuts down or a Herdr window suddenly closes, and that also fixes the "Herdr never updates while it stays open" problem.
 
-- Document version: kit 1.1.1 · written 2026-11-16
+- Document version: kit 1.1.2 · written 2026-11-18
 - This document is written so that **people who are new to computers and AI tools** can follow it. If you meet an unfamiliar word, read [2. Glossary](#2-glossary) first.
 - The same content is in four files: `README.md` (Korean), `README.en.md` (English), `README.html` (Korean, for web browsers) and `README.en.html` (English, for web browsers). The HTML files are generated from the md files, so the content is always the same (see [12. Files and documents](#12-files-and-documents)).
 - Note: the buttons and tabs of the Session Keeper window are in Korean. This document shows the Korean label in `backticks` next to the English meaning.
@@ -537,6 +537,19 @@ node build-readme.mjs         # 3) if you changed README.md / README.en.md, rebu
 ---
 
 ## 11. Update summary
+
+<details>
+<summary><b>Kit 1.1.2 (2026-11-18) — fixes for sessions not being restored (update recommended)</b></summary>
+
+- **Fixed detection of Claude inside a window (most important)**: `hc` reports the window's root shell number (`pid`) and the number of the program currently in front (`foreground.pid`) separately, but the old keeper assumed the front program was the shell and looked only at its children. With this format it found none of the open Claude sessions, so the restore record stopped being updated. It now searches under the root shell first (on a real PC: 0 found → 19 found).
+- **Removed the permanent give-up lock**: after one failed restore check, the old keeper fixed the attempt count at 99 and never tried again. Attempts are now counted only up to the limit (3), and an old record's 99 is read as "tried once". The check after typing waits up to 180 seconds.
+- **Handling of windows with old-screen residue**: when the Herdr app starts again, an empty shell where the old Claude screen was redrawn is recognized by Herdr as a Claude app, and typing a command into it mixed mouse/key-encoding characters into the command and broke it. For such windows the keeper does not type; it **restores into a new tab** and leaves the old window open.
+- **Automatic restore when windows end while the app stays open**: before, automatic restore started only "when the Herdr app starts anew", so Claude windows that ended while the app kept running were not brought back. Now restore starts when 6 or more restore-pending windows appear and the newest has settled for over 45 seconds (so the app is not just shutting down), at most once per 10 minutes for the same incident.
+- **Tests**: added 50 tests for window detection, attempt counting, residue windows and incident detection; all 21 suites pass.
+- **Verified on a real PC**: after restarting the PC and opening Herdr, all 22 conversations were restored automatically (0 failures) and the conversation IDs matched before and after the restart. Not verified on another PC or Windows 10.
+- Install kit, shortcut and app-update behavior is unchanged. The keeper program applies the new rules the next time it restarts.
+
+</details>
 
 <details>
 <summary><b>Kit 1.1.1 (2026-11-16) — security review fixes</b></summary>

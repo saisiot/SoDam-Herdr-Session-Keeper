@@ -4,7 +4,7 @@
 
 > **In one sentence**: A Windows tool that helps you pick up your AI conversations (Claude Code · Codex) again from a list after the computer shuts down or a Herdr window suddenly closes, and that also fixes the "Herdr never updates while it stays open" problem.
 
-- Document version: kit 1.1.2 · written 2026-11-18
+- Document version: kit 1.1.3 · written 2026-11-20
 - This document is written so that **people who are new to computers and AI tools** can follow it. If you meet an unfamiliar word, read [2. Glossary](#2-glossary) first.
 - The same content is in four files: `README.md` (Korean), `README.en.md` (English), `README.html` (Korean, for web browsers) and `README.en.html` (English, for web browsers). The HTML files are generated from the md files, so the content is always the same (see [12. Files and documents](#12-files-and-documents)).
 - Note: the buttons and tabs of the Session Keeper window are in Korean. This document shows the Korean label in `backticks` next to the English meaning.
@@ -539,6 +539,20 @@ node build-readme.mjs         # 3) if you changed README.md / README.en.md, rebu
 ## 11. Update summary
 
 <details>
+<summary><b>Kit 1.1.3 (2026-11-20) — recognition-rate check warning · fix for record-saving collisions</b></summary>
+
+- **Recognition-rate check warning (new)**: every minute the keeper compares "the number of windows Herdr reports as Claude windows" with "the number the keeper recognized as Claude". If there are 3 or more windows and fewer than half are recognized for 3 minutes in a row, it warns through the log and a Windows notification (again every 6 hours) and a red line appears at the top of the keeper window. If the check record is not refreshed for over 6 minutes, it shows "check stopped". It only warns; it does not touch records, restore or input. It stays quiet during a restore and within 5 minutes after the keeper starts.
+- **State file `keeper-health.json` (new)**: every minute it records the check result (last check time, check interval, window count, recognized count, number of old-screen residue windows, state, whether a restore is in progress). It lets other programs read the keeper's state, and `node sessions.mjs health` shows it too. The format of the restore record `session-map.json` is unchanged.
+- **Old-screen residue windows excluded**: a residue window with only a shell and no Claude is not counted as "an unrecognized Claude", so it does not cause a false warning.
+- **Fix for record-saving collisions**: when the automatic watcher and a manual run saved the record at the same time, they wrote the same temporary file and a save could fail (experiment: 31 of 240 saves failed with 4 runs saving 60 times each at the same time). The keeper now locks only the short saving moment and gives each run its own temporary file name; the same experiment now fails 0 times.
+- **Keeper-stuck notice**: if a new keeper cannot start while the check record (heartbeat) has been stopped for over 5 minutes, it notifies once through the log and a notification.
+- **Tests**: added tests for the check, the state file and saving collisions; all 21 suites pass. The "auto-start rule" test used to count app processes once and sometimes failed falsely when another program briefly started an app process at that moment; it now waits and checks whether the count stays increased.
+- **Not verified**: a real PC restart restore after this change, another PC, Windows 10. The recognition-rate warning was verified with fake data and a replay of the past incident (2026-11-14); I have not yet seen it fire in a real incident.
+- Install kit, shortcut, app-update and restore behavior are unchanged. The keeper program applies the new code the next time it restarts.
+
+</details>
+
+<details>
 <summary><b>Kit 1.1.2 (2026-11-18) — fixes for sessions not being restored (update recommended)</b></summary>
 
 - **Fixed detection of Claude inside a window (most important)**: `hc` reports the window's root shell number (`pid`) and the number of the program currently in front (`foreground.pid`) separately, but the old keeper assumed the front program was the shell and looked only at its children. With this format it found none of the open Claude sessions, so the restore record stopped being updated. It now searches under the root shell first (on a real PC: 0 found → 19 found).
@@ -661,7 +675,7 @@ What is in the top-level project folder:
 | `session-keeper-watchdog.vbs` | One-minute watchdog |
 | `install-herdr-mod.ps1` | Script that installs only the mod directly from the repository folder (for developers; separate from the install kit) |
 | `kit-src\`, `build-kit.mjs`, `.claude-plugin\`, `plugins\` | Install-kit sources · generator · generated result (included in the repository) |
-| `tests\` | Tests (`run-all.mjs`, 20 suites). Includes the shortcut test `setkey.test.ps1` and the security test `security.test.ps1` (command injection and ID checks) |
+| `tests\` | Tests (`run-all.mjs`, 21 suites). Includes the shortcut test `setkey.test.ps1` and the security test `security.test.ps1` (command injection and ID checks) |
 
 ### 12.2 Inside the install kit
 
@@ -691,6 +705,7 @@ Data files inside the install folder:
 | File | Content |
 |---|---|
 | `session-map.json` (+`.bak`) | Window address → session ID/space/tab record |
+| `keeper-health.json` | The keeper's self-check result (last check time, window count, recognized count, state, whether a restore is in progress). Rewritten every minute and deleted when the keeper starts. Other programs may read it |
 | `LAST-RESTORE.txt` · `restore-history.log` | Last restore result · accumulated results |
 | `session-keeper.log` | Detailed log |
 | `session-keeper.alive` | "I am alive" heartbeat (refreshed every minute, deleted on a normal exit) |
@@ -855,6 +870,7 @@ It **does not touch** Claude Code settings (`settings.json` etc.) or Codex setti
 | Window does not appear after an update | Rare failure | The keeper starts the app instead after 20 seconds. If it still does not appear, start Herdr from the Start menu |
 | Automatic update suddenly "off" | The button was clicked, or clicked together with App update | `-Mode Update -Auto On` |
 | Characters look garbled (`?`, strange characters) | Console encoding | No effect on operation. If you need to check, run `chcp 65001` first |
+| A red line at the top of the keeper window: `점검 필요: Claude 창 N개 중 M개만 인식 중` (check needed: only M of N Claude windows recognized) | The keeper has failed to recognize the open Claude windows for over 3 minutes (if this continues, a restore after a PC restart may not work) | In `session-keeper.log`, read the warning line for the cause counts (window lookup failed / Claude not found, etc.). If it was temporary, the log later says `정상으로 돌아왔습니다` (back to normal). If it continues, keep the log and report an issue |
 | A warning that the keeper disappeared | Keeper replaced or ended | The log line "같은 부팅 안에서 이전 감시가 … 사라졌습니다" (the earlier watcher disappeared during the same boot) — the watchdog starts it again in a minute. If it repeats, check the log before and after |
 
 **Where to look first for more detail**: ① the end of `session-keeper.log` in the install folder ② `LAST-RESTORE.txt` ③ the `-Plan` preview.
@@ -1025,7 +1041,7 @@ Names such as Herdr, Claude, Claude Code, Anthropic, Codex, OpenAI, Node.js, Win
 
 | Item | Result |
 |---|---|
-| Full regression tests | **19 of 20 suites passed, 1 intermittent failure** (last full run 2026-11-16). The one that failed is the app-update test that uses a fake app, and 3 separate reruns all passed (cause not confirmed; it wobbles when the computer is busy). Contract, window logic, robustness, Codex, restore, auto-start rule, install, shortcut, security, app update, etc. |
+| Full regression tests | **All 21 suites passed** (2026-11-20, run in order in the foreground). Two earlier full runs the same day failed one check in the "auto-start rule" suite; it was measured to coincide with another program's tests briefly starting app processes (not a keeper behavior problem), and it passed again after the test was fixed. Contract, window logic, robustness, Codex, restore, auto-start rule, install, shortcut, security, app update, etc. |
 | Install kit tests | 52 passed (temporary folder, temporary task name, Korean/space paths; check, conflict refusal, install, reinstall, uninstall, refusing a wrong install folder, keeping other files on `-RemoveData`) |
 | Shortcut tests | 54 passed (change, reset, remove; refusing clashes, bad keys and special input; read-only file, empty `global`, parallel runs, backup; fake `keys.json` only) |
 | Security tests | 34 passed (20 kinds of hostile folder names such as quotes, Unicode quotes, `$()`, backtick, line breaks and 5000 characters do not split the command; conversation-ID format check) |
@@ -1044,7 +1060,7 @@ Names such as Herdr, Claude, Claude Code, Anthropic, Codex, OpenAI, Node.js, Win
 - **Codex screen matching**: only fake-data tests. Unverified on a real Codex window.
 - **"Restore all" after a real reboot** and **restoring through `codex resume`**: no reboot test was done (the empty-shell typing and new-tab paths were confirmed with an isolated Herdr restart test).
 - **Whether the update process dies together with the window closing**: not settled (even if it dies, the keeper starts the app instead after 20 seconds).
-- **Intermittent test failure**: the fake-app new-window test sometimes fails (cause not confirmed; it is a fake program for tests and unrelated to the real Herdr).
+- **Intermittent test failure**: on 2026-11-20 the "auto-start rule" test sometimes failed when it overlapped with another program's tests (it counted app processes once; fixed), and I could not deliberately reproduce it with the old method. The 2026-11-16 intermittent failure of the fake-app new-window test has an unconfirmed cause (it is a fake program for tests and unrelated to the real Herdr).
 - **Keeper log line `루프 오류(계속 진행): null 값 식에서 메서드를 호출할 수 없습니다` (loop error, continuing: cannot call a method on a null value)**: it was logged 30 times in the past, every 5 seconds in 3 short bursts, the last on 2026-11-15 12:53. It has not recurred since and the keeper logs the error and keeps running, but the **cause is unverified**.
 - **Whether Herdr recognizes a changed shortcut immediately**: unverified (if not, close and reopen Herdr).
 - **Folder permissions**: if you install on a place such as drive D: with `-InstallDir`, the folder may be writable by "all users". The default location (`%LOCALAPPDATA%`) is current-user only ([15.4](#154-security-cautions)).

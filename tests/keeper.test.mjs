@@ -218,6 +218,29 @@ try {
   ok('sessions.mjs update-auto: on/off 외의 값은 사용법 오류(종료 2)', r3.status === 2);
   const r4 = spawnSync(process.execPath, [TOOL, 'update-auto', 'off', '--json'], { encoding: 'utf8', env: { ...process.env, SESSIONS_KEEPER_DIR: ud, SESSIONS_NO_HERDR: '1', SESSIONS_KEEPER_DRYRUN: '1' } });
   ok('sessions.mjs update-auto off: 명령을 만든다(DRYRUN)', r4.status === 0 && /-Auto Off/.test(r4.stdout));
+  // ---- 키퍼 인식률 점검 결과 읽기 (2026-11-19)
+  const hd = join(base, 'health'); mkdirSync(hd, { recursive: true });
+  ok('readHealth: 파일이 없으면 null', K.readHealth(hd) === null);
+  writeFileSync(join(hd, 'keeper-health.json'), JSON.stringify({ at: '2026-11-19T03:00:00', windows: 23, recognized: 22, state: 'warn', since: '2026-11-19T02:57:00', reason: '창 23개 중 22개만 인식' }));
+  ok('readHealth: 값을 읽는다', (() => { const h = K.readHealth(hd); return h && h.windows === 23 && h.recognized === 22 && h.state === 'warn' && h.since === '2026-11-19T02:57:00' && /22개만/.test(h.reason); })());
+  writeFileSync(join(hd, 'keeper-health.json'), JSON.stringify({ v: 1, at: '2026-11-19T03:00:00', intervalSec: 60, windows: 23, recognized: 23, ghost: 2, state: 'ok', recovering: true, recoverySince: '2026-11-19T02:58:00' }));
+  ok('readHealth: 계약 필드(v·intervalSec·ghost·recovering·recoverySince)를 통과시킨다', (() => { const h = K.readHealth(hd); return h.v === 1 && h.intervalSec === 60 && h.ghost === 2 && h.recovering === true && h.recoverySince === '2026-11-19T02:58:00'; })());
+  writeFileSync(join(hd, 'keeper-health.json'), JSON.stringify({ at: '2026-11-19T03:00:00', recovering: 'yes' }));
+  ok('readHealth: recovering 은 true 일 때만 true(문자열 등은 false), 옛 파일(v 없음)은 v=0·intervalSec=0', (() => { const h = K.readHealth(hd); return h.recovering === false && h.v === 0 && h.intervalSec === 0; })());
+  writeFileSync(join(hd, 'keeper-health.json'), '\uFEFF' + JSON.stringify({ at: '2026-11-19T03:00:00', windows: 1, recognized: 1, state: 'ok' }));
+  ok('readHealth: BOM 이 붙어 있어도 읽는다', K.readHealth(hd)?.state === 'ok');
+  writeFileSync(join(hd, 'keeper-health.json'), '쓰레기{');
+  ok('readHealth: 깨진 파일은 예외 없이 null', K.readHealth(hd) === null);
+  writeFileSync(join(hd, 'keeper-health.json'), '[1,2]');
+  ok('readHealth: 객체가 아닌 JSON 은 null', K.readHealth(hd) === null);
+  writeFileSync(join(hd, 'keeper-health.json'), JSON.stringify({ at: 5, windows: -3, recognized: 'abc', state: 'weird', reason: 'x'.repeat(1000) }));
+  ok('readHealth: 이상한 값은 0·ok·길이 제한으로 정리', (() => { const h = K.readHealth(hd); return h.windows === 0 && h.recognized === 0 && h.state === 'ok' && h.reason.length === 300 && h.at === '5'; })());
+  writeFileSync(join(hd, 'keeper-health.json'), JSON.stringify({ at: '2026-11-19T03:00:00', windows: 4, recognized: 1, state: 'warn' }));
+  const rh = spawnSync(process.execPath, [TOOL, 'health'], { encoding: 'utf8', env: { ...process.env, SESSIONS_KEEPER_DIR: hd, SESSIONS_NO_HERDR: '1' } });
+  ok('sessions.mjs health: 점검 결과를 JSON 으로 낸다', rh.status === 0 && JSON.parse(rh.stdout).windows === 4 && JSON.parse(rh.stdout).state === 'warn');
+  rmSync(join(hd, 'keeper-health.json'), { force: true });
+  const rn = spawnSync(process.execPath, [TOOL, 'health'], { encoding: 'utf8', env: { ...process.env, SESSIONS_KEEPER_DIR: hd, SESSIONS_NO_HERDR: '1' } });
+  ok('sessions.mjs health: 파일이 없으면 null(오류 아님)', rn.status === 0 && rn.stdout.trim() === 'null');
   try { rmSync(base, { recursive: true, force: true }); } catch { /* 임시 폴더 정리 실패는 무시 */ }
 }
 

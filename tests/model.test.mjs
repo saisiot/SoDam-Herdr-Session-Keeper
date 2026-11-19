@@ -147,6 +147,17 @@ ok('appUpdateLine: 새 버전 대기(ready)면 버전 두 개와 [업데이트] 
 ok('appUpdateLine: 파일은 새것·창은 옛것(restart)이면 껐다 켜라는 안내', (() => { const l = appUpdateLine({ kind: 'restart', auto: true, installed: '0.1.15' }); return l && l.apply && /껐다 켜/.test(l.text); })());
 ok('appUpdateLine: 최신이고 자동 켜짐이면 아무것도 보이지 않는다(null)', appUpdateLine({ kind: 'none', auto: true }) === null);
 ok('appUpdateLine: 자동이 꺼져 있으면 다시 켤 수 있게 줄을 보인다(버튼 없음)', (() => { const l = appUpdateLine({ kind: 'none', auto: false }); return l && !l.apply && !l.auto; })());
+// ---- 키퍼 인식률 경고 한 줄 (2026-11-19)
+const { healthBanner } = M;
+const hNow = Date.parse('2026-11-19T03:00:00');
+ok('healthBanner: 기록 없음·이상한 입력은 아무것도 보이지 않는다(null)', healthBanner(null, hNow) === null && healthBanner(undefined, hNow) === null && healthBanner('x', hNow) === null && healthBanner({}, hNow) === null);
+ok('healthBanner: 정상(ok)이고 최근이면 보이지 않는다', healthBanner({ at: '2026-11-19T02:59:30', windows: 23, recognized: 23, state: 'ok' }, hNow) === null);
+const hw = healthBanner({ at: '2026-11-19T02:59:30', windows: 24, recognized: 0, state: 'warn', since: '2026-11-19T02:55:00' }, hNow);
+ok('healthBanner: 경고(warn)는 창 수·인식 수·시작 시각을 쉬운 말로', hw && hw.level === 'warn' && /24개 중 0개만 인식/.test(hw.text) && /11-19 02:55부터/.test(hw.text) && /복구가 안 될 수 있습니다/.test(hw.text), JSON.stringify(hw));
+ok('healthBanner: 점검 기록이 6분 넘게 멈추면 멈춤(stale) 경고, 정확히 6분까지는 정상', (() => { const s = healthBanner({ at: '2026-11-19T02:49:00', windows: 23, recognized: 23, state: 'ok' }, hNow); return s && s.level === 'stale' && /11분째/.test(s.text) && /02:49/.test(s.text) && healthBanner({ at: '2026-11-19T02:54:00', windows: 23, recognized: 23, state: 'ok' }, hNow) === null; })());
+ok('healthBanner: 시각을 못 읽어도 예외 없이 null, warn 은 시각 없이도 보인다', healthBanner({ at: '쓰레기', state: 'ok' }, hNow) === null && healthBanner({ state: 'warn', windows: 5, recognized: 1 }, hNow)?.level === 'warn' && !/\(.*부터\)/.test(healthBanner({ state: 'warn', windows: 5, recognized: 1 }, hNow).text));
+ok('healthBanner: 점검 주기(intervalSec)가 길면 그 5배까지는 멈춤으로 보지 않음, 없으면 6분', healthBanner({ at: '2026-11-19T02:40:00', windows: 23, recognized: 23, state: 'ok', intervalSec: 300 }, hNow) === null && healthBanner({ at: '2026-11-19T02:30:00', windows: 23, recognized: 23, state: 'ok', intervalSec: 300 }, hNow)?.level === 'stale' && healthBanner({ at: '2026-11-19T02:50:00', windows: 23, recognized: 23, state: 'ok', intervalSec: 60 }, hNow)?.level === 'stale');
+ok('healthBanner: 경고(warn)가 멈춤보다 우선', healthBanner({ at: '2026-11-19T01:00:00', windows: 9, recognized: 1, state: 'warn' }, hNow).level === 'warn');
 ok('appUpdateLine: null·이상한 입력도 예외 없이 null', appUpdateLine(null) === null && appUpdateLine('x') === null && appUpdateLine({}) === null);
 
 console.log(out.join('\n')); console.log(`\n합계: PASS ${pass} / FAIL ${fail}`); process.exit(fail ? 1 : 0);

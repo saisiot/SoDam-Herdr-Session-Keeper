@@ -22,7 +22,7 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { exec, agents, keys, home, theme, run, notify, props, closeOverlay } from "herdr";
 import {
-  STATUS, STATUS_KEYS, ago, buildItems, groupDead, groupPending, groupLive, liveSummary, filterLive, matchItem, filterAi, lastBanner, appUpdateLine,
+  STATUS, STATUS_KEYS, ago, buildItems, groupDead, groupPending, groupLive, liveSummary, filterLive, matchItem, filterAi, lastBanner, appUpdateLine, healthBanner,
   pendingState, canAutoRecover, planWord, planSummary, MAX_ATTEMPTS, resumeCommand, idChip,
 } from "./model.js";
 
@@ -42,6 +42,7 @@ export default class SessionKeeper extends View {
     this.rows = [];
     this.last = null;            // 마지막 자동 복구 결과 {at, verdict, level, tally}
     this.appUpd = null;          // Herdr 앱 업데이트 상태 {kind, auto, installed, staged} (sessions.mjs update-state)
+    this.health = null;          // 키퍼 인식률 점검 {at, windows, recognized, state, since} (sessions.mjs health)
     this.filter = "";
     this.view = "live";          // "pending" 복구 대기 | "live" 열려 있는 창 | "dead" 꺼진 세션
     this.userPicked = false;     // 사용자가 탭을 직접 눌렀으면 자동으로 탭을 바꾸지 않는다
@@ -87,16 +88,18 @@ export default class SessionKeeper extends View {
     this.busy = true;
     cx.spawn(async (cx) => {
       try {
-        const [r, l, u] = await Promise.all([
+        const [r, l, u, hl] = await Promise.all([
           exec(NODE, [TOOL, "json", "--days", "14", "--limit", "60"]),
           exec(NODE, [TOOL, "last"]).catch(() => null),
           exec(NODE, [TOOL, "update-state"]).catch(() => null),
+          exec(NODE, [TOOL, "health"]).catch(() => null),
         ]);
         if (r.code !== 0) throw new Error((r.stderr || "목록 도구 실행 실패").trim());
         this.rows = JSON.parse(r.stdout);
         this.loadError = "";
         try { this.last = l && l.code === 0 && l.stdout ? JSON.parse(l.stdout) : null; } catch { this.last = null; }
         try { this.appUpd = u && u.code === 0 && u.stdout ? JSON.parse(u.stdout) : null; } catch { this.appUpd = null; }
+        try { this.health = hl && hl.code === 0 && hl.stdout ? JSON.parse(hl.stdout) : null; } catch { this.health = null; }
         if (!this.loaded) {          // 처음 열었을 때: 복구할 작업이 있으면 그 탭부터 보여 준다
           this.loaded = true;
           if (!this.userPicked && this.rows.some((x) => !x.live && x.keeper && x.keeper.pending)) this.view = "pending";
@@ -597,6 +600,14 @@ export default class SessionKeeper extends View {
         .child(div().flex_1().min_w(0).truncate().text_size(12.5).text_color(t.blocked).child(sharedWhy))
       : null;
 
+    // ---- 키퍼 인식률 경고 한 줄: 키퍼가 Herdr 의 Claude 창을 제대로 못 읽거나 멈췄을 때만(정상이면 안 보임). 어느 탭에서나 맨 위에 보인다.
+    const hb = healthBanner(this.health);
+    const hbEl = hb
+      ? h_flex().gap(8).px(10).h(30).items_center().rounded(7).bg(t.raised)
+        .child(div().flex_none().text_size(12).font_semibold().text_color(t.blocked).child("▲"))
+        .child(div().flex_1().min_w(0).truncate().text_size(12).font_semibold().text_color(t.blocked).child(hb.text))
+      : null;
+
     // ---- Herdr 앱 업데이트 한 줄(새 버전이 대기 중이거나 자동 업데이트가 꺼져 있을 때만). 적용은 두 번 눌러야 하고, 자동 켜기/끄기도 여기서 한다.
     const upd = appUpdateLine(this.appUpd);
     const updEl = upd
@@ -730,6 +741,7 @@ export default class SessionKeeper extends View {
       })
       .child(topRow)
       .child(tools)
+      .when(!!hbEl, (el) => el.child(hbEl))
       .when(!!bannerEl, (el) => el.child(bannerEl))
       .when(!!whyEl, (el) => el.child(whyEl))
       .when(!!updEl, (el) => el.child(updEl))

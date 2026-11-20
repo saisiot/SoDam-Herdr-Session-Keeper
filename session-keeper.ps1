@@ -46,9 +46,9 @@ $env:HC_TERMINAL_ID = $null
 $Dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # kit.env(설치 도구가 적는 파일): 이 PC 의 node/hc 위치가 PATH 에 없을 때 알려 준다(작업 스케줄러·Herdr 안은 PATH 가 다를 수 있다). 없으면 아무것도 하지 않는다.
 # 항목: NODE_DIR/HC_DIR(PATH 앞에 붙임) / APP_EXE(Herdr 앱 exe) / APP_HOME(Herdr 설정 폴더) / CLAUDE_CFG(Claude Code 설정 폴더). 이미 환경변수가 있으면 그것이 우선.
-try { $KitEnv = Join-Path $Dir 'kit.env'; if (Test-Path -LiteralPath $KitEnv) { foreach ($ln in [IO.File]::ReadAllLines($KitEnv)) { if ($ln -match '^([A-Z_]+)=(.+)$') { $kk = $Matches[1]; $kv = $Matches[2].Trim()
+try { $AppExeFromKit = $false; $KitEnv = Join-Path $Dir 'kit.env'; if (Test-Path -LiteralPath $KitEnv) { foreach ($ln in [IO.File]::ReadAllLines($KitEnv)) { if ($ln -match '^([A-Z_]+)=(.+)$') { $kk = $Matches[1]; $kv = $Matches[2].Trim()
     if (($kk -eq 'NODE_DIR' -or $kk -eq 'HC_DIR') -and (Test-Path -LiteralPath $kv) -and (";$env:PATH;" -notlike "*;$kv;*")) { $env:PATH = $kv + ';' + $env:PATH }
-    elseif ($kk -eq 'APP_EXE' -and -not $env:KEEPER_APP_EXE) { $env:KEEPER_APP_EXE = $kv }
+    elseif ($kk -eq 'APP_EXE' -and -not $env:KEEPER_APP_EXE) { $env:KEEPER_APP_EXE = $kv; $AppExeFromKit = $true }
     elseif ($kk -eq 'APP_HOME' -and -not $env:HERDR_APP_HOME) { $env:HERDR_APP_HOME = $kv }
     elseif ($kk -eq 'CLAUDE_CFG' -and -not $env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR = $kv } } } } } catch {}
 $MapFile = Join-Path $Dir 'session-map.json'
@@ -87,6 +87,20 @@ function Write-Log([string]$msg) {
     } catch {}
     Write-Host $line
 }
+
+# Herdr 앱 위치가 낡았으면(앱을 다른 곳으로 옮기거나 다시 설치함) 다시 찾는다. 키퍼는 이 앱으로 Herdr 에 명령을 보내므로, 못 찾으면 창 정보를 읽지 못한다.
+# 호출한 쪽이 KEEPER_APP_EXE 를 직접 정했으면(시험 등) 그대로 존중한다. kit.env 가 정한 값이거나 기본 위치일 때만 다시 찾는다.
+function Resolve-AppExe([string]$current, [bool]$allowSearch) {
+    if (-not $allowSearch -or (Test-Path -LiteralPath $current)) { return $current }
+    $cands = @()
+    try { $cands += @(Get-Process -Name $AppProc -ErrorAction SilentlyContinue | ForEach-Object { $_.Path } | Where-Object { $_ }) } catch {}
+    $cands += (Join-Path $env:LOCALAPPDATA 'Programs\herdr-app\herdr-app.exe')
+    try { $gc = Get-Command herdr-app -ErrorAction SilentlyContinue | Select-Object -First 1; if ($gc) { $cands += $gc.Source } } catch {}
+    foreach ($c in $cands) { if ($c -and (Test-Path -LiteralPath $c)) { return $c } }
+    return $current
+}
+$AppExeNew = Resolve-AppExe $AppExe ((-not $env:KEEPER_APP_EXE) -or $AppExeFromKit)
+if ($AppExeNew -ne $AppExe) { Write-Log "Herdr 앱 위치가 바뀐 것을 찾았습니다: $AppExe -> $AppExeNew"; $AppExe = $AppExeNew }
 
 function Set-Prop($o, [string]$n, $v) { $o | Add-Member -NotePropertyName $n -NotePropertyValue $v -Force }
 function Get-Prop($o, [string]$n, $d) { if ($o -and $o.PSObject.Properties[$n]) { return $o.$n } else { return $d } }
@@ -219,7 +233,19 @@ function Get-ClaudeSessions {
     foreach ($f in Get-ChildItem $SessDir -Filter '*.json' -File -ErrorAction SilentlyContinue) {
         try {
             $o = [IO.File]::ReadAllText($f.FullName, [Text.Encoding]::UTF8) | ConvertFrom-Json
-            if ($o.pid -and $o.sessionId -and (Get-Process -Id ([int]$o.pid) -ErrorAction SilentlyContinue)) { $h[[int]$o.pid] = $o }
+            if (-not ($o.pid -and $o.sessionId)) { continue }
+            $proc = Get-Process -Id ([int]$o.pid) -ErrorAction SilentlyContinue
+            if (-not $proc) { continue }
+            # 재부팅 뒤 Windows 는 옛 pid 를 전혀 다른 프로그램에 다시 준다. 파일에 적힌 시작 시각(procStart)이 실제 프로세스와 다르면 가짜(옛 파일)라 무시한다.
+            # (이걸 안 하면 "같은 대화가 이미 실행 중"으로 잘못 보고 복구를 건너뜀 - 2026-11-20 재부팅 시험에서 창 28개 중 1개가 걸림)
+            # 시각을 못 읽거나 파일에 없으면 예전처럼 살아 있는 것으로 본다(복구가 실제 실행 중인 대화에 겹쳐 입력하는 쪽이 더 위험).
+            if ($o.procStart) {
+                $same = $true
+                # 파일의 값이 FILETIME(1918~2233년 범위의 큰 정수)일 때만 판단한다. 다른 단위·형식(Claude 가 나중에 바꿀 수 있음)이면 판단하지 않고 예전처럼 실행 중으로 본다.
+                try { $ps = [int64]"$($o.procStart)"; if ($ps -ge 100000000000000000 -and $ps -le 200000000000000000) { $actual = [int64]$proc.StartTime.ToFileTime(); $same = ([math]::Abs($actual - $ps) -le 50000000) } } catch { $same = $true }   # 오차 5초(FILETIME 100ns 단위)
+                if (-not $same) { continue }
+            }
+            $h[[int]$o.pid] = $o
         } catch {}
     }
     return $h

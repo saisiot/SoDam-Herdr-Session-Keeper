@@ -238,7 +238,7 @@ At install time it **finds the following on that PC** and records them in `kit.e
 | Claude settings folder | environment variable `CLAUDE_CONFIG_DIR` → `%APPDATA%\claude-code` (if present) → `%USERPROFILE%\.claude` |
 | Codex data | environment variable `CODEX_HOME`, `%USERPROFILE%\.codex`, `%USERPROFILE%\.codex_runtime` (all that exist) |
 
-To move the install, install again at the new place with `-InstallDir newplace` and remove the old place with `uninstall.ps1 -InstallDir oldplace`.
+To move the install, install again at the new place with `-InstallDir newplace`. If the files at the old place are already gone (you moved or deleted them), the installer says "it looks like you moved the folder" and re-links to the new place without `-Force`. If the old place is still there (you only copied), it is treated as a different install and stops, so remove the old place with `uninstall.ps1 -InstallDir oldplace` or add `-Force`. If the drive of the old place does not exist at all (an external disk may be unplugged), it stops to be safe. **If you move the folder and do not install again**, the recovery scheduled task that runs every minute points at the old place, fails, and the keeper does not start (measured).
 
 ### 5.8 Changing the shortcut key
 
@@ -546,9 +546,12 @@ node build-readme.mjs         # 3) if you changed README.md / README.en.md, rebu
 - **Old-screen residue windows excluded**: a residue window with only a shell and no Claude is not counted as "an unrecognized Claude", so it does not cause a false warning.
 - **Fix for record-saving collisions**: when the automatic watcher and a manual run saved the record at the same time, they wrote the same temporary file and a save could fail (experiment: 31 of 240 saves failed with 4 runs saving 60 times each at the same time). The keeper now locks only the short saving moment and gives each run its own temporary file name; the same experiment now fails 0 times.
 - **Keeper-stuck notice**: if a new keeper cannot start while the check record (heartbeat) has been stopped for over 5 minutes, it notifies once through the log and a notification.
-- **Tests**: added tests for the check, the state file and saving collisions; all 21 suites pass. The "auto-start rule" test used to count app processes once and sometimes failed falsely when another program briefly started an app process at that moment; it now waits and checks whether the count stays increased.
-- **Not verified**: a real PC restart restore after this change, another PC, Windows 10. The recognition-rate warning was verified with fake data and a replay of the past incident (2026-11-14); I have not yet seen it fire in a real incident.
-- Install kit, shortcut, app-update and restore behavior are unchanged. The keeper program applies the new code the next time it restarts.
+- **Fix: recovery skipped because an old process number was reused**: after a restart, Windows can hand a process number (pid) from before the restart to a completely different program. The keeper then read the leftover old session file (`sessions\<number>.json`) as "the same conversation is already running" and did not recover that window. In a real restart test (2026-11-20, with the code from before this fix) 27 of 28 windows were recovered in about 6 minutes and 1 was skipped this way (that window had to be continued by hand with `claude --resume <id>`). The keeper now compares the process start time written in the session file with the real process's start time (5-second tolerance) and ignores the file as a leftover if they differ. If the file has no start time, it cannot be read, or it is not in the expected format (a Windows FILETIME), the keeper does not judge and treats it as running as before (so that a future change of this value's format in Claude cannot make every window look fake, and so it never types over a conversation that really is running).
+- **Re-install after moving the folder**: if the files at the old place are gone, the installer re-links to the new place without `-Force` (see [5.7](#57-how-it-keeps-working-when-the-environment-folder-or-computer-changes)). If the old place is still there or its drive is missing, it stops as a conflict like before.
+- **Herdr app location re-search**: if the app location written at install time is stale (the app was reinstalled somewhere else), the keeper searches again: the running app, then the default install location, then PATH. A location the user set with an environment variable is respected as is.
+- **Tests**: added tests for the check, the state file, saving collisions, old-pid reuse (11 checks) and re-install after a folder move plus the app location re-search (5 checks); all 22 suites pass. The "auto-start rule" test used to count app processes once and sometimes failed falsely when another program briefly started an app process at that moment; it now waits and checks whether the count stays increased.
+- **Not verified**: a real PC restart restore after the old-pid fix (that fix was verified only with a replay test using fake session files and a waiting process), a real-PC check of re-install after a folder move (only tested with temporary folders and a temporary task), another PC, Windows 10. The recognition-rate warning was verified with fake data and a replay of the past incident (2026-11-14); I have not yet seen it fire in a real incident. Also, the keeper sometimes disappears without a normal-exit mark (it happened once more on 2026-11-20 at 14:34; the watchdog task started it again within about 4 minutes and no window was affected). I have not yet found the cause.
+- Shortcut and app-update behavior are unchanged. Restore behavior changed only by the "old process number reuse" fix above, and the install kit only by "re-install after moving the folder" above. The keeper program applies the new code the next time it restarts.
 
 </details>
 
@@ -675,7 +678,7 @@ What is in the top-level project folder:
 | `session-keeper-watchdog.vbs` | One-minute watchdog |
 | `install-herdr-mod.ps1` | Script that installs only the mod directly from the repository folder (for developers; separate from the install kit) |
 | `kit-src\`, `build-kit.mjs`, `.claude-plugin\`, `plugins\` | Install-kit sources · generator · generated result (included in the repository) |
-| `tests\` | Tests (`run-all.mjs`, 21 suites). Includes the shortcut test `setkey.test.ps1` and the security test `security.test.ps1` (command injection and ID checks) |
+| `tests\` | Tests (`run-all.mjs`, 22 suites). Includes the shortcut test `setkey.test.ps1` and the security test `security.test.ps1` (command injection and ID checks) |
 
 ### 12.2 Inside the install kit
 
@@ -1041,7 +1044,7 @@ Names such as Herdr, Claude, Claude Code, Anthropic, Codex, OpenAI, Node.js, Win
 
 | Item | Result |
 |---|---|
-| Full regression tests | **All 21 suites passed** (2026-11-20, run in order in the foreground). Two earlier full runs the same day failed one check in the "auto-start rule" suite; it was measured to coincide with another program's tests briefly starting app processes (not a keeper behavior problem), and it passed again after the test was fixed. Contract, window logic, robustness, Codex, restore, auto-start rule, install, shortcut, security, app update, etc. |
+| Full regression tests | **All 22 suites passed** (2026-11-20, run in order in the foreground). Two earlier full runs the same day failed one check in the "auto-start rule" suite; it was measured to coincide with another program's tests briefly starting app processes (not a keeper behavior problem), and it passed again after the test was fixed. Contract, window logic, robustness, Codex, restore, auto-start rule, install, shortcut, security, app update, etc. |
 | Install kit tests | 52 passed (temporary folder, temporary task name, Korean/space paths; check, conflict refusal, install, reinstall, uninstall, refusing a wrong install folder, keeping other files on `-RemoveData`) |
 | Shortcut tests | 54 passed (change, reset, remove; refusing clashes, bad keys and special input; read-only file, empty `global`, parallel runs, backup; fake `keys.json` only) |
 | Security tests | 34 passed (20 kinds of hostile folder names such as quotes, Unicode quotes, `$()`, backtick, line breaks and 5000 characters do not split the command; conversation-ID format check) |

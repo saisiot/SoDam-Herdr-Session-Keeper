@@ -17,6 +17,7 @@ const SUITES = [
   { key: 'edge', name: '경계·실패: 잘못된 입력·손상 파일·이상한 폴더·대량·동시 접근 (임시 폴더)', cmd: 'node', args: ['edge.test.mjs'] },
   { key: 'order', name: '복구 순서: 우선 공간 → 최근 사용순 (키퍼 함수, 읽기 전용)', cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'order.test.ps1'] },
   { key: 'codexpair', name: 'Codex 창 짝짓기(명령줄 resume ID 확정)·새 탭 생성 허용 판단 (가짜 대화 파일, 임시 폴더)', cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'codexpair.test.ps1'] },
+  { key: 'pidreuse', name: '재부팅 뒤 옛 pid 재사용: 가짜 실행 중 판정 때문에 복구가 건너뛰어지지 않음 (가짜 세션 파일·대기 프로세스, 임시 폴더)', cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'pidreuse.test.ps1'] },
   { key: 'autostart', name: '자동 시작 규칙: 부팅만으로는 안 켜짐, Herdr 앱이 켜져 있을 때만 키퍼 동작 (감시 스크립트 + 임시 사본)', cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'autostart.test.ps1'] },
   { key: 'closeverdict', name: '직접 닫은 창은 복구 목록에서 제외 + 자동 복구는 닫히기 직전 창만 (판정 함수, 실제 기록은 읽기 전용)', cmd: 'powershell', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'closeverdict.test.ps1'] },
   { key: 'readme', name: 'README 4종: 한·영 구조 동일, 목차 링크, md 글자 = html 글자', cmd: 'node', args: ['readme.test.mjs'] },

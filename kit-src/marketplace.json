@@ -7,7 +7,7 @@
       "name": "herdr-session-keeper",
       "source": "./plugins/herdr-session-keeper",
       "description": "Herdr 가 닫히거나 PC 가 꺼져도 Claude Code·Codex 세션을 골라서 복구하고, Herdr 가 열려 있어도 앱 업데이트가 적용되게 하는 도구 (Windows)",
-      "version": "1.1.2",
+      "version": "1.1.3",
       "category": "productivity"
     }
   ]

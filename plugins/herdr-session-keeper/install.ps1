@@ -98,15 +98,32 @@ Say "  설치 위치: $InstallDir"
 if ($InstallDir -match '[^\x20-\x7e]') { Say '  참고: 설치 경로에 한글 등이 있습니다. 대부분 동작하지만 가능하면 영문 경로를 권장합니다.' }
 
 # 다른 위치의 기존 설치와 충돌?
-$conflict = @()
+# 단, 옛 위치가 "드라이브는 있는데 파일이 없다"면 폴더를 옮기거나 지운 것이므로 충돌이 아니라 새 위치로 다시 연결한다(-Force 불필요).
+# (드라이브 자체가 없으면 외장 디스크가 빠진 것일 수 있어 안전하게 충돌로 본다)
+function Test-OldGone([string]$p) {
+    try { if (-not $p) { return $false }; $root = [IO.Path]::GetPathRoot($p); return [bool]($root -and (Test-Path -LiteralPath $root) -and -not (Test-Path -LiteralPath $p)) } catch { return $false }
+}
+$conflict = @(); $moved = @()
 try {
     $t = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-    if ($t) { $args0 = ($t.Actions | ForEach-Object { "$($_.Arguments)" }) -join ' '; if ($args0 -notlike "*$InstallDir*") { $conflict += "작업 '$TaskName' 이 다른 위치를 가리킵니다: $args0" } }
+    if ($t) {
+        $args0 = ($t.Actions | ForEach-Object { "$($_.Arguments)" }) -join ' '
+        if ($args0 -notlike "*$InstallDir*") {
+            $oldVbs = [regex]::Match($args0, '"([^"]+session-keeper-watchdog\.vbs)"').Groups[1].Value
+            if (Test-OldGone $oldVbs) { $moved += "작업 '$TaskName' 이 가리키던 옛 위치가 없습니다: $oldVbs" } else { $conflict += "작업 '$TaskName' 이 다른 위치를 가리킵니다: $args0" }
+        }
+    }
 } catch {}
 $mainJs = Join-Path $ModDir 'main.js'
 if (Test-Path -LiteralPath $mainJs) {
     $m0 = [regex]::Match([IO.File]::ReadAllText($mainJs, [Text.Encoding]::UTF8), 'const TOOL = "([^"]*)";')
-    if ($m0.Success -and $m0.Groups[1].Value -ne $ToolPath) { $conflict += "Herdr 모드가 다른 위치를 가리킵니다: $($m0.Groups[1].Value)" }
+    if ($m0.Success -and $m0.Groups[1].Value -ne $ToolPath) {
+        if (Test-OldGone $m0.Groups[1].Value) { $moved += "Herdr 모드가 가리키던 옛 위치가 없습니다: $($m0.Groups[1].Value)" } else { $conflict += "Herdr 모드가 다른 위치를 가리킵니다: $($m0.Groups[1].Value)" }
+    }
+}
+if ($moved.Count -gt 0 -and $conflict.Count -eq 0) {
+    Say '  폴더를 옮기신 것으로 보입니다. 옛 위치에 파일이 없어 새 위치로 다시 연결합니다:'
+    $moved | ForEach-Object { Say "    - $_" }
 }
 if ($conflict.Count -gt 0 -and -not $Force) {
     Say '  이미 다른 위치에 세션키퍼가 설치되어 있습니다:'

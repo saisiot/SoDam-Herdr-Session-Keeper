@@ -149,6 +149,22 @@ export function appUpdateLine(s) {
   return null;
 }
 
+// 키퍼 인식률 경고 한 줄(2026-11-19). h = sessions.mjs health 결과 {at, windows, recognized, state, since} 또는 null.
+// 경고(warn): 키퍼가 Herdr 의 Claude 창을 절반 미만만 인식 -> 재부팅 때 복구가 안 될 수 있다. 멈춤(stale): 점검 기록이 6분 넘게 갱신되지 않음 -> 키퍼가 멈췄을 수 있다.
+// 정상이거나 기록이 없으면(옛 키퍼·시작 직후) null - 아무것도 보여 주지 않는다.
+export const HEALTH_STALE_MS = 6 * 60000;
+export function healthBanner(h, now = Date.now()) {
+  if (!h || typeof h !== "object") return null;
+  if (h.state === "warn") {
+    const since = String(h.since || "").slice(5, 16).replace("T", " ");
+    return { level: "warn", text: `점검 필요: Claude 창 ${Number(h.windows) || 0}개 중 ${Number(h.recognized) || 0}개만 인식 중${since ? ` (${since}부터)` : ""}. 재부팅 때 복구가 안 될 수 있습니다.` };
+  }
+  const at = Date.parse(h.at);
+  const staleMs = Math.max(HEALTH_STALE_MS, (Number(h.intervalSec) || 0) * 5000);   // 점검 주기가 긴 설정이면 그만큼 늦게 "멈춤"으로 본다
+  if (Number.isFinite(at) && now - at > staleMs) return { level: "stale", text: `점검 멈춤: 세션키퍼가 ${Math.floor((now - at) / 60000)}분째 응답이 없습니다(마지막 ${String(h.at).slice(11, 16)}). 복구 기록이 갱신되지 않을 수 있습니다.` };
+  return null;
+}
+
 // ---- 열려 있는 창: 상태 요약·거르기·공간별 묶기
 export const STATUS_KEYS = ["blocked", "working", "done", "idle"];
 export function liveSummary(live) {

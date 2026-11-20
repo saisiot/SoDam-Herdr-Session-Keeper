@@ -1,4 +1,4 @@
-﻿# 설치 꾸러미 시험: build-kit -> install(-Check/충돌 거부/설치/재설치/-NoTask) -> 설치본 동작 -> uninstall.
+﻿﻿# 설치 꾸러미 시험: build-kit -> install(-Check/충돌 거부/설치/재설치/-NoTask) -> 설치본 동작 -> uninstall.
 # 임시 폴더 + 임시 Herdr 설정 폴더 + 임시 작업 이름만 쓴다. 이 PC 의 실제 세션키퍼·모드·작업·바로가기는 건드리지 않는다.
 # (경로에 한글·공백을 넣어 "폴더/컴퓨터가 달라도" 되는지 본다). 마지막 줄 "합계: PASS n / FAIL m" 형식은 run-all 이 읽는다.
 $ErrorActionPreference = 'Continue'
@@ -107,6 +107,29 @@ $mf4 = Get-Content (Join-Path $inst 'kit.install.json') -Raw -Encoding UTF8 | Co
 Check '-Key ctrl-alt-r 로 재설치: 키가 바뀌고(옛 ctrl-shift-r 연결 제거) 연결 줄은 1개, 설치 기록에 key 기록' ($r.code -eq 0 -and $kj4.Contains('"ctrl-alt-r": "mod.open:session-keeper"') -and -not $kj4.Contains('"ctrl-shift-r"') -and ([regex]::Matches($kj4, 'mod\.open:session-keeper')).Count -eq 1 -and $mf4.key -eq 'ctrl-alt-r')
 $r = RunInstall @()
 Check '-Key 없이 다시 설치해도 바꾼 키(ctrl-alt-r)를 유지' ($r.code -eq 0 -and [IO.File]::ReadAllText($keys, [Text.Encoding]::UTF8) -eq $kj4)
+
+# 5c) 폴더를 옮긴 뒤 다시 설치(2026-11-20 이식성 점검): 옛 위치에 파일이 없으면 -Force 없이 새 위치로 다시 연결한다
+$instMoved = Join-Path $T '옮긴 설치 폴더\새 앱'
+New-Item -ItemType Directory -Path (Split-Path -Parent $instMoved) -Force | Out-Null
+$mvOk = $false; for ($i = 0; $i -lt 8 -and -not $mvOk; $i++) { try { Move-Item -LiteralPath $inst -Destination $instMoved -ErrorAction Stop; $mvOk = $true } catch { Start-Sleep -Seconds 1 } }
+Check '준비: 설치 폴더를 통째로 옮김' $mvOk
+$inst = $instMoved
+$r = RunInstall @('-NoKey')
+$mj5 = [IO.File]::ReadAllText((Join-Path $hh 'mods\session-keeper\main.js'), [Text.Encoding]::UTF8)
+$tk5 = Get-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue
+Check '폴더를 옮긴 뒤 재설치: -Force 없이 성공하고 옮긴 것을 안내' ($r.code -eq 0 -and $r.out -match '폴더를 옮기신')
+Check '폴더를 옮긴 뒤 재설치: 모드·작업이 새 위치를 가리킴' ($mj5.Contains('const TOOL = "' + ((Join-Path $inst 'sessions.mjs') -replace '\\', '/') + '";') -and $null -ne $tk5 -and (($tk5.Actions | ForEach-Object { $_.Arguments }) -join ' ') -like "*$inst*session-keeper-watchdog.vbs*")
+# Herdr 앱 위치 재탐색: kit.env 의 APP_EXE 가 사라진 위치여도 키퍼가 기본 위치·실행 중인 앱에서 다시 찾는다. 호출한 쪽이 직접 정한 값(KEEPER_APP_EXE)은 존중한다.
+[IO.File]::AppendAllText((Join-Path $inst 'kit.env'), "APP_EXE=$T\없는 폴더\herdr-app.exe`r`n")
+$skp = Join-Path $inst 'session-keeper.ps1'
+$cmdA = "Get-ChildItem Env: | Where-Object { `$_.Name -in 'KEEPER_APP_EXE','HERDR_APP_HOME','CLAUDE_CONFIG_DIR' } | ForEach-Object { Remove-Item -LiteralPath ('Env:' + `$_.Name) }; `$env:KEEPER_NO_MAIN='1'; . '$skp' -Mode Run | Out-Null; 'APPEXE=' + `$AppExe"
+$oA = (& powershell -NoProfile -ExecutionPolicy Bypass -Command $cmdA 2>&1 | Out-String)
+$gotA = (($oA -split "\r?\n" | Where-Object { $_ -like 'APPEXE=*' } | Select-Object -Last 1) -replace '^APPEXE=', '').Trim()
+Check 'kit.env 의 앱 위치가 사라졌으면 키퍼가 실제 앱 위치로 다시 찾음' ($gotA -ieq $realApp) $oA
+$cmdB = "Get-ChildItem Env: | Where-Object { `$_.Name -in 'HERDR_APP_HOME','CLAUDE_CONFIG_DIR' } | ForEach-Object { Remove-Item -LiteralPath ('Env:' + `$_.Name) }; `$env:KEEPER_APP_EXE='$T\호출자가 정함\herdr-app.exe'; `$env:KEEPER_NO_MAIN='1'; . '$skp' -Mode Run | Out-Null; 'APPEXE=' + `$AppExe"
+$oB = (& powershell -NoProfile -ExecutionPolicy Bypass -Command $cmdB 2>&1 | Out-String)
+$gotB = (($oB -split "\r?\n" | Where-Object { $_ -like 'APPEXE=*' } | Select-Object -Last 1) -replace '^APPEXE=', '').Trim()
+Check '호출한 쪽이 KEEPER_APP_EXE 를 직접 정했으면 없어도 그대로 존중(시험이 진짜 앱으로 새지 않음)' ($gotB -ieq "$T\호출자가 정함\herdr-app.exe") $oB
 
 # 6) 제거(데이터 보존) -> 전체 삭제
 [IO.File]::WriteAllText((Join-Path $inst 'session-map.json'), '{}')

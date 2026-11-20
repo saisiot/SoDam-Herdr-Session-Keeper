@@ -5,6 +5,7 @@
 //   node sessions.mjs open <세션ID 또는 앞 6자 이상>           Herdr 앱에 새 탭을 열어 이어서 시작 (claude --resume / codex resume)
 //   node sessions.mjs focus <창 주소>                          실행 중인 세션의 Herdr 창으로 화면만 이동
 //   node sessions.mjs last                                     가장 최근 자동 복구 결과(LAST-RESTORE.txt 의 판정·집계)를 JSON 으로
+//   node sessions.mjs health                                   키퍼의 인식률 점검 결과(keeper-health.json)를 JSON 으로(읽기 전용, 없으면 null)
 //   node sessions.mjs forget <세션ID 앞 6자 이상> [--json]      복구 대기 목록에서 빼기 (session-keeper.ps1 -Mode Forget)
 //   node sessions.mjs forget-old [--json]                      "닫히기 직전"이 아닌 옛 복구 대기 항목을 한꺼번에 빼기 (키퍼가 먼저 백업)
 //   node sessions.mjs update-state                             Herdr 앱 업데이트 상태(JSON) / update [--json]: 앱 업데이트 적용(창만 껐다 켬) / update-auto on|off [--json]: 자동 업데이트 켜기/끄기
@@ -24,7 +25,7 @@ import { herdrWindows, focusWindow } from './lib/herdr.mjs';
 import { processSnapshot, codexResumeSnapshot } from './lib/procs.mjs';
 import { joinClaudeWindows, joinCodexWindows, joinCodexResume } from './lib/join.mjs';
 import { restoreRow, stubRow } from './lib/restore.mjs';
-import { keeperIndex, decorateKeeper, missingStubs, lastRestore, keeperCommand, parsePlan, readAppUpdate, SID_RE, ADDR_RE } from './lib/keeper.mjs';
+import { keeperIndex, decorateKeeper, missingStubs, lastRestore, readHealth, keeperCommand, parsePlan, readAppUpdate, SID_RE, ADDR_RE } from './lib/keeper.mjs';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -129,6 +130,8 @@ async function main() {
     process.exit(r.ok ? 0 : 1);
   } else if (cmd === 'last') {
     process.stdout.write(JSON.stringify(lastRestore(KDIR)));                       // 가장 최근 자동 복구 결과(없으면 null)
+  } else if (cmd === 'health') {
+    process.stdout.write(JSON.stringify(readHealth(KDIR)));                        // 키퍼가 Claude 창을 제대로 인식하는지(읽기 전용, 없으면 null)
   } else if (cmd === 'update-state') {
     process.stdout.write(JSON.stringify(readAppUpdate(KDIR)));                     // Herdr 앱 업데이트 상태 + 자동 켜짐 여부(읽기 전용)
   } else if (cmd === 'update') {

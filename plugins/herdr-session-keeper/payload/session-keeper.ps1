@@ -46,9 +46,9 @@ $env:HC_TERMINAL_ID = $null
 $Dir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # kit.env(설치 도구가 적는 파일): 이 PC 의 node/hc 위치가 PATH 에 없을 때 알려 준다(작업 스케줄러·Herdr 안은 PATH 가 다를 수 있다). 없으면 아무것도 하지 않는다.
 # 항목: NODE_DIR/HC_DIR(PATH 앞에 붙임) / APP_EXE(Herdr 앱 exe) / APP_HOME(Herdr 설정 폴더) / CLAUDE_CFG(Claude Code 설정 폴더). 이미 환경변수가 있으면 그것이 우선.
-try { $KitEnv = Join-Path $Dir 'kit.env'; if (Test-Path -LiteralPath $KitEnv) { foreach ($ln in [IO.File]::ReadAllLines($KitEnv)) { if ($ln -match '^([A-Z_]+)=(.+)$') { $kk = $Matches[1]; $kv = $Matches[2].Trim()
+try { $AppExeFromKit = $false; $KitEnv = Join-Path $Dir 'kit.env'; if (Test-Path -LiteralPath $KitEnv) { foreach ($ln in [IO.File]::ReadAllLines($KitEnv)) { if ($ln -match '^([A-Z_]+)=(.+)$') { $kk = $Matches[1]; $kv = $Matches[2].Trim()
     if (($kk -eq 'NODE_DIR' -or $kk -eq 'HC_DIR') -and (Test-Path -LiteralPath $kv) -and (";$env:PATH;" -notlike "*;$kv;*")) { $env:PATH = $kv + ';' + $env:PATH }
-    elseif ($kk -eq 'APP_EXE' -and -not $env:KEEPER_APP_EXE) { $env:KEEPER_APP_EXE = $kv }
+    elseif ($kk -eq 'APP_EXE' -and -not $env:KEEPER_APP_EXE) { $env:KEEPER_APP_EXE = $kv; $AppExeFromKit = $true }
     elseif ($kk -eq 'APP_HOME' -and -not $env:HERDR_APP_HOME) { $env:HERDR_APP_HOME = $kv }
     elseif ($kk -eq 'CLAUDE_CFG' -and -not $env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR = $kv } } } } } catch {}
 $MapFile = Join-Path $Dir 'session-map.json'
@@ -87,6 +87,20 @@ function Write-Log([string]$msg) {
     } catch {}
     Write-Host $line
 }
+
+# Herdr 앱 위치가 낡았으면(앱을 다른 곳으로 옮기거나 다시 설치함) 다시 찾는다. 키퍼는 이 앱으로 Herdr 에 명령을 보내므로, 못 찾으면 창 정보를 읽지 못한다.
+# 호출한 쪽이 KEEPER_APP_EXE 를 직접 정했으면(시험 등) 그대로 존중한다. kit.env 가 정한 값이거나 기본 위치일 때만 다시 찾는다.
+function Resolve-AppExe([string]$current, [bool]$allowSearch) {
+    if (-not $allowSearch -or (Test-Path -LiteralPath $current)) { return $current }
+    $cands = @()
+    try { $cands += @(Get-Process -Name $AppProc -ErrorAction SilentlyContinue | ForEach-Object { $_.Path } | Where-Object { $_ }) } catch {}
+    $cands += (Join-Path $env:LOCALAPPDATA 'Programs\herdr-app\herdr-app.exe')
+    try { $gc = Get-Command herdr-app -ErrorAction SilentlyContinue | Select-Object -First 1; if ($gc) { $cands += $gc.Source } } catch {}
+    foreach ($c in $cands) { if ($c -and (Test-Path -LiteralPath $c)) { return $c } }
+    return $current
+}
+$AppExeNew = Resolve-AppExe $AppExe ((-not $env:KEEPER_APP_EXE) -or $AppExeFromKit)
+if ($AppExeNew -ne $AppExe) { Write-Log "Herdr 앱 위치가 바뀐 것을 찾았습니다: $AppExe -> $AppExeNew"; $AppExe = $AppExeNew }
 
 function Set-Prop($o, [string]$n, $v) { $o | Add-Member -NotePropertyName $n -NotePropertyValue $v -Force }
 function Get-Prop($o, [string]$n, $d) { if ($o -and $o.PSObject.Properties[$n]) { return $o.$n } else { return $d } }
@@ -190,15 +204,26 @@ function Read-Map {
 }
 
 function Save-Map($m) {
-    # 현재 파일이 정상일 때만 .bak 으로 보관(깨진 파일이 정상 백업을 덮어쓰지 않게)
-    if (Test-Path $MapFile) { try { $null = Read-MapFile $MapFile; Copy-Item $MapFile "$MapFile.bak" -Force } catch {} }
-    # 인코딩 먼저 -> 임시 파일 -> 교체 (쓰다 끊겨도 기존 파일 보존)
-    $ordered = [ordered]@{}
-    foreach ($k in ($m.Keys | Sort-Object)) { $ordered[$k] = $m[$k] }
-    $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes(($ordered | ConvertTo-Json -Depth 5))
-    $tmp = $MapFile + '.tmp'
-    [IO.File]::WriteAllBytes($tmp, $bytes)
-    Move-Item $tmp $MapFile -Force
+    # 자동 감시와 수동 실행(-Mode Snapshot/Forget/Recover)이 동시에 저장하면 같은 .tmp 를 서로 쓰다 실패한다(2026-11-19 재현: 4개 동시 60회씩 저장 중 31회 실패).
+    # 그래서 (1) 저장 구간만 짧게 잠그고(기다려도 안 되면 잠금 없이 진행 - 저장을 포기하지 않는다) (2) 임시 파일 이름을 실행마다 다르게 한다.
+    $mx = $null; $got = $false
+    try { $mx = New-Object Threading.Mutex($false, 'Local\HerdrSessionKeeperMapWrite'); try { $got = $mx.WaitOne(10000) } catch [Threading.AbandonedMutexException] { $got = $true } } catch { $mx = $null }
+    $tmp = "$MapFile.$PID.tmp"
+    try {
+        # 현재 파일이 정상일 때만 .bak 으로 보관(깨진 파일이 정상 백업을 덮어쓰지 않게)
+        if (Test-Path $MapFile) { try { $null = Read-MapFile $MapFile; Copy-Item $MapFile "$MapFile.bak" -Force } catch {} }
+        # 인코딩 먼저 -> 임시 파일 -> 교체 (쓰다 끊겨도 기존 파일 보존)
+        $ordered = [ordered]@{}
+        foreach ($k in ($m.Keys | Sort-Object)) { $ordered[$k] = $m[$k] }
+        $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes(($ordered | ConvertTo-Json -Depth 5))
+        [IO.File]::WriteAllBytes($tmp, $bytes)
+        Move-Item $tmp $MapFile -Force -ErrorAction Stop
+    } catch {
+        try { if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue } } catch {}
+        throw
+    } finally {
+        if ($mx) { if ($got) { try { $mx.ReleaseMutex() } catch {} }; $mx.Dispose() }
+    }
 }
 
 # 살아 있는 Claude 프로세스의 세션 정보: pid -> {sessionId, cwd}
@@ -208,7 +233,19 @@ function Get-ClaudeSessions {
     foreach ($f in Get-ChildItem $SessDir -Filter '*.json' -File -ErrorAction SilentlyContinue) {
         try {
             $o = [IO.File]::ReadAllText($f.FullName, [Text.Encoding]::UTF8) | ConvertFrom-Json
-            if ($o.pid -and $o.sessionId -and (Get-Process -Id ([int]$o.pid) -ErrorAction SilentlyContinue)) { $h[[int]$o.pid] = $o }
+            if (-not ($o.pid -and $o.sessionId)) { continue }
+            $proc = Get-Process -Id ([int]$o.pid) -ErrorAction SilentlyContinue
+            if (-not $proc) { continue }
+            # 재부팅 뒤 Windows 는 옛 pid 를 전혀 다른 프로그램에 다시 준다. 파일에 적힌 시작 시각(procStart)이 실제 프로세스와 다르면 가짜(옛 파일)라 무시한다.
+            # (이걸 안 하면 "같은 대화가 이미 실행 중"으로 잘못 보고 복구를 건너뜀 - 2026-11-20 재부팅 시험에서 창 28개 중 1개가 걸림)
+            # 시각을 못 읽거나 파일에 없으면 예전처럼 살아 있는 것으로 본다(복구가 실제 실행 중인 대화에 겹쳐 입력하는 쪽이 더 위험).
+            if ($o.procStart) {
+                $same = $true
+                # 파일의 값이 FILETIME(1918~2233년 범위의 큰 정수)일 때만 판단한다. 다른 단위·형식(Claude 가 나중에 바꿀 수 있음)이면 판단하지 않고 예전처럼 실행 중으로 본다.
+                try { $ps = [int64]"$($o.procStart)"; if ($ps -ge 100000000000000000 -and $ps -le 200000000000000000) { $actual = [int64]$proc.StartTime.ToFileTime(); $same = ([math]::Abs($actual - $ps) -le 50000000) } } catch { $same = $true }   # 오차 5초(FILETIME 100ns 단위)
+                if (-not $same) { continue }
+            }
+            $h[[int]$o.pid] = $o
         } catch {}
     }
     return $h
@@ -546,10 +583,86 @@ function Test-IncidentTrigger($Entries, [datetime]$Now, [string]$Boot, [int]$Cou
     return (($ages | Measure-Object -Minimum).Minimum -ge $SettleSec)
 }
 
+# 인식률 점검(입출력 없는 순수 함수 2개): "Herdr 가 Claude 창이라고 보고한 수"와 "키퍼가 Claude 로 인식한 수"를 견준다.
+#  2026-11-14~18: 키퍼가 열린 Claude 24개 중 0개를 인식한 채 4일간 아무도 몰랐다(복구 기록 정지). 이 점검은 알리기만 하고
+#  기록(session-map.json)을 쓰거나 복구·입력을 하지 않는다. 비교 대상은 프로세스·세션 파일 수가 아니라 hc 의 창 수다
+#  (실측: claude 프로세스 50 / 세션 파일 26 / Herdr 창 23 / 인식 23 - 앞의 둘은 정상일 때도 어긋나 오경보가 난다).
+function Test-DetectBad([int]$Windows, [int]$Recognized) {
+    return ($Windows -ge 3 -and ($Recognized * 2) -lt $Windows)      # 창 3개 이상이고 인식이 절반 미만
+}
+# 점검 1회분 상태 전이. event: warn(처음 경고) / remind(경고가 계속돼 다시 알림) / recover(정상 복귀) / ''(없음)
+function Step-DetectHealth($S, [bool]$Bad, [bool]$Suppress, [datetime]$Now, [int]$Need, [int]$RemindMin) {
+    $n = @{ streak = [int]$S.streak; warn = [bool]$S.warn; since = $S.since; lastNotify = $S.lastNotify; event = '' }
+    if ($Suppress) { $n.streak = 0; return $n }                       # 복구 중·시작 직후에는 판단하지 않는다
+    if ($Bad) {
+        $n.streak = $n.streak + 1
+        if (-not $n.warn -and $n.streak -ge $Need) { $n.warn = $true; $n.since = $Now; $n.lastNotify = $Now; $n.event = 'warn' }
+        elseif ($n.warn -and $n.lastNotify -and (($Now - [datetime]$n.lastNotify).TotalMinutes -ge $RemindMin)) { $n.lastNotify = $Now; $n.event = 'remind' }
+    } else {
+        $n.streak = 0
+        if ($n.warn) { $n.warn = $false; $n.event = 'recover' }
+    }
+    return $n
+}
+$script:LastDetect = $null
+$script:LastOkLog = $null
+$script:HealthReason = ''
+$script:HealthObj = $null
+function Write-HealthFile($obj) {
+    $hf = Join-Path $Dir 'keeper-health.json'; $tmp = $hf + '.tmp'
+    [IO.File]::WriteAllText($tmp, ($obj | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding($false)))
+    Move-Item -LiteralPath $tmp -Destination $hf -Force
+}
+# 복구 창이 열리고 닫히는 순간 상태 파일의 recovering 만 바로 고친다(다음 1분 점검을 기다리면 읽는 쪽이 복구 시작을 한 박자 늦게 안다). at(마지막 점검 시각)은 그대로 둔다.
+function Set-HealthRecovering([bool]$Rec, $Since) {
+    try {
+        if ($null -eq $script:HealthObj -or [bool]$script:HealthObj.recovering -eq $Rec) { return }
+        $script:HealthObj.recovering = $Rec
+        $script:HealthObj.recoverySince = $(if ($Rec -and $Since) { ([datetime]$Since).ToString('yyyy-MM-ddTHH:mm:ss') } else { '' })
+        Write-HealthFile $script:HealthObj
+    } catch { try { Write-Log "상태 파일 복구 표시 오류(감시는 계속): $($_.Exception.Message)" } catch {} }
+}
+# 점검 결과를 로그·알림·상태 파일(keeper-health.json)로 알린다. 어떤 오류도 여기서 끝낸다(감시 루프가 멈추지 않게).
+function Invoke-HealthTick($State, [bool]$Suppress, [bool]$Recovering = $false, $RecoverySince = $null) {
+    try {
+        $d = $script:LastDetect
+        if ($null -eq $d) { return $State }
+        $now = Get-Date
+        $bad = Test-DetectBad $d.W $d.H
+        $st = Step-DetectHealth $State $bad $Suppress $now 3 360
+        if ($bad) { $script:HealthReason = "창 $($d.W)개 중 $($d.H)개만 인식 (창 정보 조회 실패 $($d.hcFail) / 창 번호 없음 $($d.noPid) / Claude 못 찾음 $($d.none) / 잔상 창 제외 $([int]$d.ghost)$(if ($d.skip) { ' / 세션 파일 읽기 실패' }))" }
+        switch ($st.event) {
+            'warn' {
+                Write-Log "경고: 인식률 점검 - $($script:HealthReason). 3분 연속입니다. 이대로면 PC 를 껐다 켤 때 복구가 안 될 수 있습니다."
+                $null = Show-Toast 'Herdr 세션키퍼: 점검 필요' "열려 있는 Claude 창 $($d.W)개 중 $($d.H)개만 인식합니다. 이대로면 PC 를 껐다 켤 때 복구가 안 될 수 있습니다. 키퍼 창과 session-keeper.log 를 확인하세요."
+            }
+            'remind' {
+                Write-Log "경고(계속): 인식률 점검 - $($script:HealthReason). 시작 $(([datetime]$st.since).ToString('MM-dd HH:mm'))"
+                $null = Show-Toast 'Herdr 세션키퍼: 아직 점검 필요' "Claude 창 $($d.W)개 중 $($d.H)개만 인식하는 상태가 계속되고 있습니다."
+            }
+            'recover' { Write-Log "인식률 점검: 정상으로 돌아왔습니다 (창 $($d.W) / 인식 $($d.H))."; $script:HealthReason = '' }
+        }
+        if (-not $st.warn -and -not $Suppress -and (-not $script:LastOkLog -or (($now - $script:LastOkLog).TotalMinutes -ge 60))) {
+            $script:LastOkLog = $now; Write-Log "인식률 점검 정상: 창 $($d.W) / 인식 $($d.H)"
+        }
+        # 계약(계약-세션키퍼-상태.md): v=형식 버전, intervalSec=점검 주기(읽는 쪽이 "낡음" 기준을 이 값으로 정한다), recovering=복구 창이 열려 있는 동안 true.
+        # 필드는 추가만 하고 이름·뜻을 바꾸지 않는다(오케스트레이션 role-check/role-watch 가 읽는다).
+        $obj = [ordered]@{
+            v = 1; at = $now.ToString('yyyy-MM-ddTHH:mm:ss'); intervalSec = [int]$LoopSec; windows = [int]$d.W; recognized = [int]$d.H; ghost = [int]$d.ghost
+            state = $(if ($st.warn) { 'warn' } else { 'ok' }); since = $(if ($st.warn -and $st.since) { ([datetime]$st.since).ToString('yyyy-MM-ddTHH:mm:ss') } else { '' })
+            reason = $(if ($st.warn) { $script:HealthReason } else { '' })
+            recovering = [bool]$Recovering; recoverySince = $(if ($Recovering -and $RecoverySince) { ([datetime]$RecoverySince).ToString('yyyy-MM-ddTHH:mm:ss') } else { '' })
+        }
+        $script:HealthObj = $obj
+        Write-HealthFile $obj
+        return $st
+    } catch { try { Write-Log "인식률 점검 오류(감시는 계속): $($_.Exception.Message)" } catch {}; return $State }
+}
 # ---------------------------------------------------------------- Snapshot
 $script:CodexWarned = @{}
 function Invoke-Snapshot {
     $boot = Get-BootId
+    $script:LastDetect = $null
     $ls = Invoke-HcJson @('ls')
     if (-not $ls) { return }                      # 코어가 아직 없으면 기록을 건드리지 않는다
     $map = Read-Map
@@ -557,6 +670,7 @@ function Invoke-Snapshot {
     # 탐지 실패 방어: Claude 프로세스는 떠 있는데 세션 파일을 하나도 못 읽었다면(폴더 이동/형식 변경 등)
     # "Claude 가 끝났다"고 오해해 기록을 지우지 않도록 이번 회차는 건드리지 않는다.
     if ($sess.Count -eq 0 -and (Get-Process claude -ErrorAction SilentlyContinue)) {
+        $script:LastDetect = @{ W = @($ls.terminals | Where-Object { $_.state -eq 'live' -and $_.agent -eq 'claude-code' }).Count; H = 0; hcFail = 0; noPid = 0; ghost = 0; none = 0; skip = $true }
         if (-not $script:WarnedDetect) { Write-Log '경고: Claude 프로세스는 있는데 세션 파일을 읽지 못했습니다. 기록을 보호하려고 이번 회차는 건너뜁니다.'; $script:WarnedDetect = $true }
         return
     }
@@ -564,14 +678,17 @@ function Invoke-Snapshot {
     $kids = Get-ChildTable
     $layout = Get-LayoutTable (Get-AppLs)
     $now = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
-    $seen = @{}; $liveHit = @{}; $codexTerms = @{}
+    $seen = @{}; $liveHit = @{}; $codexTerms = @{}; $dc = @{ hcFail = 0; noPid = 0; ghost = 0 }
     foreach ($t in @($ls.terminals)) {
         if ($t.state -ne 'live') { continue }
         $seen[$t.address] = $true
         $g = Invoke-HcJson @('get', $t.address)
-        if (-not $g -or -not (Test-HasWindowPid $g)) { continue }
+        if (-not $g -or -not (Test-HasWindowPid $g)) { if ($t.agent -eq 'claude-code') { if (-not $g) { $dc.hcFail++ } else { $dc.noPid++ } }; continue }
         $hit = Find-ClaudeInWindow $g $kids $sess
         $cx = $null; if (-not $hit) { $cx = Find-CodexInWindow $g $kids }
+        # 인식률 점검용: Claude 도 Codex 도 없는데 앞 프로그램이 셸이면 "옛 화면 잔상 창"이다(Herdr 가 claude-code 로 보고하지만 실제 Claude 는 없음).
+        # 이런 창은 인식 못 한 Claude 가 아니므로 분모에서 뺀다. 앞 프로그램이 셸이 아닌데 못 찾은 창만 진짜 미인식이다(2026-11-14 사고가 이 경우).
+        if (-not $hit -and -not $cx -and $t.agent -eq 'claude-code' -and "$($g.foreground.name)" -match '^(powershell|pwsh|cmd)\.exe$') { $dc.ghost++ }
         $old = $map[$t.address]
         if ($hit) {
             $L = $layout[$t.address]
@@ -615,7 +732,10 @@ function Invoke-Snapshot {
             }
         }
     }
-    # 한꺼번에 사라짐 = 사고: 이번 부팅에서 기록된 창 중 Claude 가 없어진 것이 MassCount 개 이상이면(Herdr 가 갑자기
+    # 인식률 점검용 집계(읽기만 함): Herdr 가 Claude 창이라고 보고한 창 중 키퍼가 Claude 로 인식한 수
+    $ccAddr = @($ls.terminals | Where-Object { $_.state -eq 'live' -and $_.agent -eq 'claude-code' } | ForEach-Object { $_.address })
+    $hitN = @($ccAddr | Where-Object { $liveHit.ContainsKey($_) }).Count
+    $script:LastDetect = @{ W = $ccAddr.Count - $dc.ghost; H = $hitN; hcFail = $dc.hcFail; noPid = $dc.noPid; ghost = $dc.ghost; none = [Math]::Max(0, $ccAddr.Count - $dc.ghost - $hitN - $dc.hcFail - $dc.noPid); skip = $false }    # 한꺼번에 사라짐 = 사고: 이번 부팅에서 기록된 창 중 Claude 가 없어진 것이 MassCount 개 이상이면(Herdr 가 갑자기
     # 닫혔다 열려 창이 빈 셸로 돌아오거나 끝나 버린 경우, 종료 중 Claude 가 먼저 죽은 경우) 사용자가 하나씩 끝낸 것이 아니므로
     # 지우지 않고 복구 대상(orphan)으로 보존한다. 1~2개만 사라지면 아래 기존 규칙(직접 종료로 보고 정리)을 따른다.
     # (창 자체가 닫힌 경우는 아래 Get-CloseVerdict 가 따로 판정한다. 여기서는 "창은 살아 있는데 Claude 만 사라진" 새 건만 센다.
@@ -967,6 +1087,7 @@ function Get-PreviousShutdownInfo {
 }
 
 function Show-Toast([string]$Title, [string]$Body) {
+    if ($env:KEEPER_NO_TOAST) { return $true }   # 시험 전용: 실제 알림을 띄우지 않는다
     try {
         [void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
         [void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]
@@ -1243,11 +1364,27 @@ function Test-PreviousRunDied {
 function Invoke-Run {
     $mutex = New-Object Threading.Mutex($false, 'Local\HerdrSessionKeeper')
     # 이미 실행 중이면 조용히 종료(감시 장치가 5분마다 호출하므로 로그를 쌓지 않는다)
-    if (-not $mutex.WaitOne(0)) { Write-Host '이미 실행 중입니다.'; return }
+    if (-not $mutex.WaitOne(0)) {
+        Write-Host '이미 실행 중입니다.'
+        # 2026-11-18: 키퍼가 14:35 에 심박을 멈춘 뒤 9시간 동안 아무 흔적 없이 되살아나지 않았다(원인 미확인). 잠금이 풀리지 않는데 심박만 5분 넘게
+        # 멈춰 있으면 기존 키퍼가 멈춘 것일 수 있다 -> 새 프로세스는 예전처럼 조용히 끝나되, 이 한 번(5~6분 구간)만 로그·알림으로 알린다(알리기만 함).
+        try {
+            if (Test-Path -LiteralPath $AliveFile) {
+                $ageSec = ((Get-Date) - (Get-Item -LiteralPath $AliveFile).LastWriteTime).TotalSeconds
+                if ($ageSec -ge 300 -and $ageSec -lt 370) {
+                    Write-Log "경고: 키퍼가 이미 실행 중으로 잠겨 있는데 심박이 $([int]$ageSec)초째 멈춰 있습니다(멈춘 키퍼일 수 있음). 새 프로세스는 종료합니다."
+                    $null = Show-Toast 'Herdr 세션키퍼: 멈춘 것 같습니다' "세션키퍼가 $([int]($ageSec / 60))분째 응답이 없습니다. 복구 기록이 갱신되지 않을 수 있으니 session-keeper.log 를 확인하세요."
+                }
+            }
+        } catch {}
+        return
+    }
     try {
         $script:AutoScope = $true   # 이 실행이 하는 복구는 "자동 복구"(닫히기 직전 창만)
         Test-PreviousRunDied
         Set-Heartbeat
+        # 옛 점검 기록이 남아 있으면 모드 창이 시작 직후 "점검 멈춤"으로 오해한다 -> 새로 시작할 때 지운다(첫 점검 때 다시 만든다)
+        try { Remove-Item -LiteralPath (Join-Path $Dir 'keeper-health.json') -Force -ErrorAction SilentlyContinue } catch {}
         Write-Log "== session-keeper 시작 (부팅 $(Get-BootId), pid $PID)"
         # 2026-11-09: Herdr 앱을 이 스크립트가 직접 켜지 않는다. PC 부팅만으로는 켜지 않고, 사용자가 Herdr 를 켰을 때
         # 감시 작업(session-keeper-watchdog.vbs, 1분 간격)이 이 스크립트를 시작한다. 앱이 없으면 아래 '앱 종료 대기' 규칙으로 곧 끝난다.
@@ -1268,7 +1405,7 @@ function Invoke-Run {
         $appWasUp = Test-AppAlreadyUp $curApp $script:PrevHb (Get-BootId)
         $nextRecover = Get-Date; $nextSnap = Get-Date; $nextAppUpd = (Get-Date).AddMinutes(1)
         $appGoneSince = $null   # 앱이 꺼진 것을 처음 본 시각(앱이 AppGoneExitSec 넘게 꺼져 있으면 이 감시도 끝낸다)
-        $loopBoot = Get-BootId; $nextIncident = Get-Date; $script:IncidentAt = $null   # 사고 판정용(부팅 ID 는 한 번만 읽는다)
+        $loopBoot = Get-BootId; $nextIncident = Get-Date; $script:IncidentAt = $null; $health = @{ streak = 0; warn = $false; since = $null; lastNotify = $null }; $runStart = Get-Date   # 사고 판정용(부팅 ID 는 한 번만 읽는다)
         while ($true) {
           try {
             $now = Get-Date
@@ -1318,6 +1455,7 @@ function Invoke-Run {
                 Write-Log '앱 업데이트 재시작 중 새 창이 20초 넘게 뜨지 않아 세션키퍼가 대신 앱을 켭니다.'
                 try { if (@(Get-AppProcs (Get-AppInstallDir)).Count -eq 0) { Start-AppWindow (Join-Path (Get-AppInstallDir) 'herdr-app.exe') } } catch { Write-Log "대신 켜기 실패: $($_.Exception.Message)" }
             }
+            Set-HealthRecovering $active $trigger     # 복구 창이 열렸다/닫혔다를 상태 파일에 바로 반영(읽는 쪽이 알림을 묶을 수 있게)
             # 앱은 그대로인데 창이 한꺼번에 끝난 사고: 앱 재시작을 기다리지 않고 복구 창을 연다(같은 사고로 10분 안에 두 번 열지 않음).
             if ($appUp -and -not $active -and $now -ge $nextIncident) {
                 $nextIncident = $now.AddSeconds(10)
@@ -1330,7 +1468,7 @@ function Invoke-Run {
                     Write-Log "직전 종료: $($script:PrevInfo)"
                 }
             }
-            if ($now -ge $nextSnap -and -not ((Test-AppUpdateBusy) -and (Get-Process -Id (Get-AppUpdateMarkerPid) -ErrorAction SilentlyContinue))) { Invoke-Snapshot; Set-Heartbeat; $nextSnap = (Get-Date).AddSeconds($LoopSec) }
+            if ($now -ge $nextSnap -and -not ((Test-AppUpdateBusy) -and (Get-Process -Id (Get-AppUpdateMarkerPid) -ErrorAction SilentlyContinue))) { Invoke-Snapshot; Set-Heartbeat; $health = Invoke-HealthTick $health ($active -or (((Get-Date) - $runStart).TotalMinutes -lt 5)) $active $trigger; $nextSnap = (Get-Date).AddSeconds($LoopSec) }
             elseif ($now -ge $nextSnap) { Set-Heartbeat; $nextSnap = (Get-Date).AddSeconds(10) }   # 앱을 껐다 켜는 동안엔 기록을 건너뛴다(창 배치를 못 읽는 순간의 기록을 남기지 않게)
             if ($now -ge $nextAppUpd -and -not $active) { $nextAppUpd = (Get-Date).AddMinutes(5); Invoke-AppUpdateTick }
           } catch {

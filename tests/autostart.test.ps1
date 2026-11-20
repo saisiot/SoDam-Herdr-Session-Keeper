@@ -37,6 +37,7 @@ $copy = $src.Replace('Local\HerdrSessionKeeper''', $mutexName + '''')
 Check '시험 사본의 잠금 이름이 바뀜(실제 키퍼와 충돌 없음)' ($copy -ne $src -and $copy.Contains($mutexName))
 $copyPath = Join-Path $dir2 'session-keeper.ps1'
 [IO.File]::WriteAllText($copyPath, $copy, (New-Object Text.UTF8Encoding($true)))
+Set-Content -LiteralPath (Join-Path $dir2 'keeper-health.json') -Value '{"at":"2026-01-01T00:00:00","state":"ok"}' -Encoding ASCII   # 옛 인식률 점검 기록: 키퍼가 새로 시작할 때 지워야 한다
 $appBefore = @(Get-Process herdr-app -ErrorAction SilentlyContinue).Count
 $env:KEEPER_APP_PROC = 'no-such-proc-xyz'
 $t0 = Get-Date
@@ -51,8 +52,13 @@ $log = if (Test-Path (Join-Path $dir2 'session-keeper.log')) { Get-Content (Join
 Check '로그: 앱이 꺼져 있음을 알림' ($log -match '꺼져 있습니다')
 Check '로그: 앱이 오래 꺼져 있어 종료한다고 기록' ($log -match '넘게 꺼져 있어 session-keeper 를 종료')
 Check 'Herdr 앱을 직접 켰다는 기록이 없음' ($log -notmatch '앱을 실행했습니다')
-Check 'Herdr 앱 프로세스 수가 그대로(키퍼가 앱을 켜지 않음)' (@(Get-Process herdr-app -ErrorAction SilentlyContinue).Count -eq $appBefore)
+# 시험 도중 다른 프로그램(예: 협업 세션의 허더 모드 설치 시험이 herdr-app.exe 를 실행)이나 키퍼 사본의 hc 호출이 herdr-app 을 잠깐 띄웠다 끌 수 있다(2026-11-20 전체 실행 2회 실패 원인).
+# 그래서 끝난 직후 한 번 센 값이 아니라 최대 10초 기다려 안정된 값으로 본다. 키퍼가 앱을 켜 두고 갔다면 계속 남아 있어 그대로 잡힌다.
+$appAfter = @(Get-Process herdr-app -ErrorAction SilentlyContinue).Count; $settleEnd = (Get-Date).AddSeconds(10)
+while ($appAfter -gt $appBefore -and (Get-Date) -lt $settleEnd) { Start-Sleep -Milliseconds 500; $appAfter = @(Get-Process herdr-app -ErrorAction SilentlyContinue).Count }
+Check 'Herdr 앱 프로세스가 늘어난 채 남지 않음(키퍼가 앱을 켜 두지 않음, 다른 프로그램의 잠깐 실행은 10초까지 기다려 제외)' ($appAfter -le $appBefore)
 Check '정상 종료라 심박 파일이 지워짐' (-not (Test-Path (Join-Path $dir2 'session-keeper.alive')))
+Check '새로 시작한 키퍼는 옛 keeper-health.json 을 지움(모드 창이 낡은 기록을 점검 멈춤으로 오해하지 않게)' (-not (Test-Path (Join-Path $dir2 'keeper-health.json')))
 
 # ---- 3) 정적 확인
 $runBody = ($src -split 'function Invoke-Run \{', 2)[1]; $runBody = ($runBody -split 'function Invoke-Forget', 2)[0]

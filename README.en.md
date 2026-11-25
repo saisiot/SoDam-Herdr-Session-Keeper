@@ -809,7 +809,7 @@ Design principles:
 |---|---|
 | Does it send things to the internet? | **No.** I searched the source code (`.ps1` `.mjs` `.js` `.vbs`) for internet-access code (`http`, `Invoke-WebRequest`, `fetch`, etc.) and **found none** (confirmed by search). A new version of the Herdr app is downloaded by **Herdr itself**; this tool only moves the downloaded files into place. |
 | Does it need administrator rights? | No. It works only within the current user's scope. |
-| Does it handle passwords or API keys? | No. The 28 files of the kit (and also the whole repository of 86 files and the 14 commits of the Git history) were searched for keys, tokens, passwords, private keys and e-mail strings, with **0 hits**. |
+| Does it handle passwords or API keys? | No. The 28 files of the kit (and also the whole repository of 90 files and the 24 commits of the Git history) were searched for keys, tokens, passwords, private keys and e-mail strings, with **0 hits**. |
 | Does it read conversation content? | To display the list it reads the **title, part of the last request, folder and model** from Claude conversation records (`.jsonl`); for Codex it reads conversation files and part of the **window screen text (`hc read`)**. All of it is processed **only inside this PC** and shown on screen. |
 | Does it send input? | **Yes, in one case only**: the restore that types `claude --resume <ID>` / `codex resume <ID>` into an empty shell window (when all safety rules pass). It types into no other windows. |
 | Does it delete anything? | It **does not delete** conversation records. It only tidies old backups in its own folder (keeping only the latest few) and temporary files. The uninstall tool also deletes only what was installed. |
@@ -875,6 +875,9 @@ It **does not touch** Claude Code settings (`settings.json` etc.) or Codex setti
 | Characters look garbled (`?`, strange characters) | Console encoding | No effect on operation. If you need to check, run `chcp 65001` first |
 | A red line at the top of the keeper window: `점검 필요: Claude 창 N개 중 M개만 인식 중` (check needed: only M of N Claude windows recognized) | The keeper has failed to recognize the open Claude windows for over 3 minutes (if this continues, a restore after a PC restart may not work) | In `session-keeper.log`, read the warning line for the cause counts (window lookup failed / Claude not found, etc.). If it was temporary, the log later says `정상으로 돌아왔습니다` (back to normal). If it continues, keep the log and report an issue |
 | A warning that the keeper disappeared | Keeper replaced or ended | The log line "같은 부팅 안에서 이전 감시가 … 사라졌습니다" (the earlier watcher disappeared during the same boot) — the watchdog starts it again in a minute. If it repeats, check the log before and after |
+| Install step 3/6 shows `검사 실행 실패: WARN …` (check run failed: WARN …) | Cause not settled (observation: the `WARN` of Herdr's official check is printed together) | The install carries on and finished 4/6 to 6/6 (the 2026-11-21 rehearsal install passed all 19 checks). Do not judge it a failure from this wording alone. **If step 6/6 is printed to the end and the exit code is 0, it is normal** |
+| `install.ps1` gives `cannot find the file`, or `-Check` seems to do nothing | The terminal's current location is not the kit folder while you used a short path such as `.\install.ps1`, or you left out the leading `powershell` | Run it with the **full path**: `powershell -NoProfile -ExecutionPolicy Bypass -File "C:\myfolder\install.ps1" -Check`. Or open the kit folder in File Explorer, type `powershell` in the address bar to open a terminal in that folder, then run it |
+| The log shows `… 심박이 N초째 멈춰 있습니다 … 새 프로세스는 종료합니다` (the heartbeat has been stopped for N seconds … the new process exits) | While a restore takes long, the check record (heartbeat) stops being refreshed, so the watchdog started a helper keeper and that keeper exited by itself | In both observed cases (2026-11-21, 2026-11-22) the restore result was not affected. If it repeats, check the log before and after |
 
 **Where to look first for more detail**: ① the end of `session-keeper.log` in the install folder ② `LAST-RESTORE.txt` ③ the `-Plan` preview.
 
@@ -993,7 +996,7 @@ No. A **folder that already holds other files**, such as a documents folder, or 
 
 ## 18. Legal, copyright, license and commercial use
 
-> **For reference only; no legal effect is guaranteed.** Below are **facts confirmed directly** during development and cautious interpretations. Having a **lawyer review it is recommended** before distributing, selling or publishing, and final responsibility lies with the user.
+> **For reference only; no legal effect is guaranteed.** Below are **facts confirmed directly** during development and cautious interpretations. Having a **lawyer review it is recommended** before distributing, selling or publishing, and final responsibility lies with the user. If you are new here, start with [18.7 Plain-language summary](#187-plain-language-summary).
 
 ### 18.1 License of this project (Session Keeper) — Apache License 2.0
 
@@ -1003,6 +1006,10 @@ No. A **folder that already holds other files**, such as a documents folder, or 
 - Patents: contributors grant a patent license, but if you start patent litigation over this software, that patent license ends (section 3 of the license).
 - **Commercial use**: allowed if you follow the conditions above. However, the terms and licenses of what is used together — Herdr, Claude Code, Codex, etc. — are separate and must be checked individually ([18.2](#182-herdr--apache-license-20-confirmed-from-the-installed-files), [18.3](#183-programs-and-services-used-together)).
 - No warranty, limited liability: this software is provided **"AS IS"** and does not guarantee operation, data preservation or fitness for a particular purpose (sections 7 and 8 of the license). The interpretation above is for reference; the text of `LICENSE` is the authority.
+- **Checking the `LICENSE` text**: on 2026-11-26 it was compared line by line with the official text of the Apache Software Foundation (`https://www.apache.org/licenses/LICENSE-2.0.txt`). The only difference is one copyright line in the closing notice (`Copyright [yyyy] [name of copyright owner]` filled in as `Copyright 2026 SoDam AI Studio`). The license text itself was not edited.
+- **`NOTICE` file**: there is none at present. Section 4(d) of Apache 2.0 only requires you to keep the content of a `NOTICE` file **if a distribution has one**, so it is not needed now. This repository contains no image, font, video or audio files and no external-package dependency files, and no one else's copyright notice was found in the source (confirmed). If you later add someone else's code or material, you must judge again whether a `NOTICE` is needed.
+- **Source file headers**: no copyright header is attached to each source file. Apache 2.0 recommends headers but does not require them.
+- **Contributions (Pull Requests)**: unless stated otherwise, a contribution sent to this repository is treated as provided under the same license, according to section 5 of Apache 2.0.
 
 ### 18.2 Herdr — Apache License 2.0 (confirmed from the installed files)
 
@@ -1035,6 +1042,45 @@ Names such as Herdr, Claude, Claude Code, Anthropic, Codex, OpenAI, Node.js, Win
 2. Have you decided the visibility (private/public), and if public, do you understand it cannot be undone?
 3. Are **this-PC-only files excluded** — `session-map.json`, logs, restore results, role tables, approval records, etc. (the kit build checks this, but uploading the **whole project folder** would include them)?
 4. Are the trademark and terms notices for Herdr, Claude, Codex etc. accurate?
+5. Has the owner checked the AI-generated parts and the copyright holder notice (`SoDam AI Studio`) ([18.8](#188-caution-about-ai-generated-content))?
+
+### 18.7 Plain-language summary
+
+Below is the `LICENSE` (Apache License 2.0) in plain words. No legal effect is guaranteed, and the text of `LICENSE` is the authority.
+
+| What you want to do | Can you? | What you must keep to |
+|---|---|---|
+| Use it on my PC | Yes | Follow the terms of Herdr, Claude Code and Codex used together |
+| Download, keep, copy | Yes | Keep the `LICENSE` file with it |
+| Modify and use | Yes | Mark the files you changed as changed (section 4) |
+| Copy to my own repository (fork) or hand out for free | Yes | Provide a copy of `LICENSE`, keep copyright and attribution notices, and keep the `NOTICE` content if one appears |
+| Sell it, put it in a paid service, use it for company work, deliver it to a client | This project's license **allows** it | Follow the conditions above and check the terms of the services used together. **A lawyer's review is recommended for contracts and deliveries** |
+| Use in teaching material or lectures | Yes | State the project name and license |
+| Use the name or logo as the name of my own product | **Not permitted** (section 6) | You need separate permission from the rights holder |
+
+**What you must check yourself** (this document could not check it for you)
+
+- The **pricing plan and usage policy** of Claude Code (Anthropic) and Codex (OpenAI): when restoring, this tool types `claude --resume` or `codex resume` for you. Check yourself whether that automatic run fits your plan and terms. The tool itself has no code that takes an API key or calls an AI model directly (confirmed by code search).
+- Herdr's `LICENSE` and `THIRD-PARTY-NOTICES`: this kit does not contain Herdr, but the conditions for using or handing out Herdr are in Herdr's own documents ([18.2](#182-herdr--apache-license-20-confirmed-from-the-installed-files)).
+- The license of the Node.js you installed, and the software-installation and security policy of a company or school PC.
+- If you add fonts, images, icons, video or audio, or put screen captures in the documents, check the rights to that material and any personal information in it (this repository currently has no such files).
+
+**What you must not do**
+
+- Remove the `LICENSE` or copyright notices and hand it out as if you made it.
+- Present it as a tool affiliated with or officially approved by Herdr, Anthropic or OpenAI ([18.4](#184-trademarks)).
+- This software is provided "as is" and does not warrant operation or data preservation. If you promise a warranty to a customer, the responsibility lies with the person who promised it.
+- Install it on someone else's PC without the owner's consent ([18.5](#185-personal-information-and-other-peoples-computers)).
+- Post record or log files that contain session IDs and project names in a public place ([chapter 15](#15-security-and-data-flow)).
+
+### 18.8 Caution about AI-generated content
+
+- The code and documents of this project were written with the help of AI (Claude Code, Anthropic) (confirmed: the Git commit messages contain 20 co-author marks).
+- Who owns the copyright of AI-generated output, and whether it is protected at all, differs by country and case and is **uncertain**. This document guarantees no conclusion, and **legal/expert review is needed**.
+- Whether the copyright holder notice (`SoDam AI Studio`) matches the real legal rights holder must be checked by the project owner.
+- No one else's copyright notice was found in the source, but that is **not a guarantee that all code is original**. Before delivering or selling this project's code or documents commercially, check yourself ① the source ② the possibility of infringement from resembling existing works ③ whether commercial use is allowed. The same applies when you add images, documents or translations made with AI.
+- The conversation IDs and folder names in the test files are test values. The 34 real session IDs of this PC were searched for in the repository and in the Git history and found 0 times (the Git history was a sample of 40).
+- **Items that need expert review**: ① the ownership of AI-generated output ② whether the copyright holder notice matches the real legal entity ③ whether commercial use and automatic execution are allowed under the terms of Anthropic, OpenAI and Herdr ④ the wording of paid delivery or service contracts ⑤ responsibility for personal-data handling when installing on someone else's or a company PC.
 
 ---
 
@@ -1044,27 +1090,28 @@ Names such as Herdr, Claude, Claude Code, Anthropic, Codex, OpenAI, Node.js, Win
 
 | Item | Result |
 |---|---|
-| Full regression tests | **All 22 suites passed** (2026-11-20, run in order in the foreground). Two earlier full runs the same day failed one check in the "auto-start rule" suite; it was measured to coincide with another program's tests briefly starting app processes (not a keeper behavior problem), and it passed again after the test was fixed. Contract, window logic, robustness, Codex, restore, auto-start rule, install, shortcut, security, app update, etc. |
+| Full regression tests | **All 22 suites passed** (2026-11-20, run in order in the foreground; run in full again on the development PC on 2026-11-26, and all 694 checks passed). Two earlier full runs the same day failed one check in the "auto-start rule" suite; it was measured to coincide with another program's tests briefly starting app processes (not a keeper behavior problem), and it passed again after the test was fixed. Contract, window logic, robustness, Codex, restore, auto-start rule, install, shortcut, security, app update, etc. |
 | Install kit tests | 52 passed (temporary folder, temporary task name, Korean/space paths; check, conflict refusal, install, reinstall, uninstall, refusing a wrong install folder, keeping other files on `-RemoveData`) |
 | Shortcut tests | 54 passed (change, reset, remove; refusing clashes, bad keys and special input; read-only file, empty `global`, parallel runs, backup; fake `keys.json` only) |
 | Security tests | 34 passed (20 kinds of hostile folder names such as quotes, Unicode quotes, `$()`, backtick, line breaks and 5000 characters do not split the command; conversation-ID format check) |
 | Real Herdr window | Opened the real window with `herdr-app do mod.open` and `herdr-app shot` and **confirmed the Restore-pending tab by screenshot** (layout fine, 0 Herdr errors) |
 | Marketplace format check | `claude plugin validate` passed (only a "no author information" warning) |
 | App update | Fake-app tests + confirmed on a separate test Herdr + the development PC's real Herdr replaced and restarted from 0.1.14→0.1.15 (26 terminals kept) |
-| Secret / personal-path scan | 0 hits in the kit's 28 files. Also no secrets, personal e-mail or forbidden files in the whole repository of 86 files and the 14 commits of the Git history (all branches and tags); only the fake example path `C:\Users\myname` used in the glossary appears |
+| Secret / personal-path scan | 0 hits in the kit's 28 files. Also no secrets, personal e-mail or forbidden files in the whole repository of 90 files and the 24 commits of the Git history (all branches and tags); only two things are flagged: the fake example path `C:\Users\myname` used in the glossary, and 1 detection rule that the kit build tool `build-kit.mjs` itself holds to find personal traces (neither is a real exposure). On 2026-11-26 the 6 record and log files of the development PC were also scanned for key, token, password and private-key patterns, with 0 hits (these files are not uploaded to Git) |
 
 ### 19.2 What could not be confirmed (unverified / not run)
 
 - **Installation on another PC**: unverified (only tests imitating it with temporary folders on the development PC).
 - **Windows 10**: unverified.
-- **Actually running `/plugin marketplace add` · `/plugin install` in Claude Code**: unverified (format check only).
+- **Actually running `/plugin marketplace add` · `/plugin install` in Claude Code**: **confirmed on the development PC** (on 2026-11-21 the user added the marketplace and installed 1.1.3 themselves, and a 6-step rehearsal install with the installed folder's install tool, using a temporary folder and a temporary task name, passed all 19 checks while the real Session Keeper, watchdog task and `keys.json` stayed unchanged). **Unverified on another PC**.
 - **Button clicks and broken layouts (responsive) in the Session Keeper window**: the Restore-pending tab was confirmed by a real window screenshot, but the **shortcut panel, the Open-windows and Dead-sessions tabs, the button click behavior and narrow windows (a line with many chips may be cut off) are unverified**.
 - **Real installation of the launcher/shortcuts**: not run (only one check with temporary shortcuts).
 - **Codex screen matching**: only fake-data tests. Unverified on a real Codex window.
-- **"Restore all" after a real reboot** and **restoring through `codex resume`**: no reboot test was done (the empty-shell typing and new-tab paths were confirmed with an isolated Herdr restart test).
+- **"Restore all" after a real reboot**: **on the development PC all 3 real reboots were judged a pass** (most recent 2026-11-22: 29 of the 29 windows recorded before the reboot were restored, 0 failures). **Unverified on another PC**.
+- **Restoring through `codex resume`**: not confirmed by a real reboot test (the empty-shell typing and new-tab paths were confirmed with an isolated Herdr restart test).
 - **Whether the update process dies together with the window closing**: not settled (even if it dies, the keeper starts the app instead after 20 seconds).
-- **Intermittent test failure**: on 2026-11-20 the "auto-start rule" test sometimes failed when it overlapped with another program's tests (it counted app processes once; fixed), and I could not deliberately reproduce it with the old method. The 2026-11-16 intermittent failure of the fake-app new-window test has an unconfirmed cause (it is a fake program for tests and unrelated to the real Herdr).
-- **Keeper log line `루프 오류(계속 진행): null 값 식에서 메서드를 호출할 수 없습니다` (loop error, continuing: cannot call a method on a null value)**: it was logged 30 times in the past, every 5 seconds in 3 short bursts, the last on 2026-11-15 12:53. It has not recurred since and the keeper logs the error and keeps running, but the **cause is unverified**.
+- **Intermittent test failure**: on 2026-11-20 the "auto-start rule" test sometimes failed when it overlapped with another program's tests (it counted app processes once; fixed), and I could not deliberately reproduce it with the old method. The 2026-11-16 intermittent failure of the fake-app new-window test has an unconfirmed cause (it is a fake program for tests and unrelated to the real Herdr). During the 2026-11-26 full run the "app update" suite failed intermittently twice, but it did not reproduce in a standalone run (26/26) or in 3 re-runs under CPU load (all 26/26); the cause is **presumed** to be a fixed 0.8-second wait, so it now checks the real state for up to 10 seconds. A wrongly displayed summary line of the "old pid reuse" test was fixed the same day (the checks themselves are unchanged). The fixes to these two test files are included in this repository's test files (`tests\appupdate.test.ps1`, `tests\pidreuse.test.ps1`), and running them directly in this repository passed 26/26 and 11/11 respectively.
+- **Keeper log line `루프 오류(계속 진행): null 값 식에서 메서드를 호출할 수 없습니다` (loop error, continuing: cannot call a method on a null value)**: as of 2026-11-26 it has been logged 32 times in total (6 short bursts), the last on 2026-11-24 16:49:29. Each time the keeper logged the error and kept running, the records were preserved, and later restores were normal. However the log does not record the line number where the error occurred, so the **cause is unverified**.
 - **Whether Herdr recognizes a changed shortcut immediately**: unverified (if not, close and reopen Herdr).
 - **Folder permissions**: if you install on a place such as drive D: with `-InstallDir`, the folder may be writable by "all users". The default location (`%LOCALAPPDATA%`) is current-user only ([15.4](#154-security-cautions)).
 - lint / type check / build / e2e / browser tests: **not run**, because this project has no such tools.
@@ -1077,6 +1124,7 @@ Names such as Herdr, Claude, Claude Code, Anthropic, Codex, OpenAI, Node.js, Win
 - When there are several Codex windows in the same folder, some may not show an ID.
 - Closing 6 or more windows on purpose at once may look like an accident.
 - The **App update** and **Automatic update** buttons of the Session Keeper window are close together, so a mis-click is possible.
+- While a long restore is running, the check record (heartbeat) is not refreshed, so a log may show the watchdog starting a helper keeper that then exits immediately (observed twice, harmless).
 
 ---
 

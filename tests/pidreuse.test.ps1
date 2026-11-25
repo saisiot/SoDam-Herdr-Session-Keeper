@@ -37,7 +37,7 @@ try {
     Check 'B) pid 만 겹친 가짜(시작 시각 10분 차이)는 실행 중으로 보지 않음 - 복구가 건너뛰어지지 않는다' (-not ($sids -contains $sidFake))
     Check 'C) procStart 가 없는 옛 형식 파일은 예전처럼 인정(호환)' ($sids -contains $sidLegacy)
     Check 'D) 없는 pid 는 무시' (-not ($sids -contains $sidDead))
-    Check '합계: 진짜+옛 형식 2개만 남음' ($r.Count -eq 2)
+    Check '개수: 진짜+옛 형식 2개만 남음' ($r.Count -eq 2)
 
     # E) 오차 2초 이내는 같은 프로세스로 인정(시각 표현 차이 대비), 30초는 다른 프로세스
     New-SessFile $helpers[1].Id $sidNear ((& $ft $helpers[1]) + [int64]20000000)
@@ -73,5 +73,5 @@ finally {
     foreach ($h in $helpers) { try { Stop-Process -Id $h.Id -Force -ErrorAction SilentlyContinue } catch {} }
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }
-"`n결과: PASS $script:pass / FAIL $script:fail"
+"`n합계: PASS $script:pass / FAIL $script:fail"
 if ($script:fail -gt 0) { exit 1 }

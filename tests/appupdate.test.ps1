@@ -20,7 +20,8 @@ Check '영수증이 없으면 믿지 않는다(none)' ((Get-AppUpdateState).kind
 # 2) 근본 원인 재현: 작업 폴더로 잡힌 폴더는 이름을 못 바꾸고, 파일 교체는 된다
 $i5 = New-Install 'a5' $true; $env:KEEPER_APP_DIR = $i5
 $holder = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', 'ping -n 60 127.0.0.1 >nul' -WorkingDirectory $i5 -WindowStyle Minimized -PassThru
-Start-Sleep -Milliseconds 800
+# 대기 프로세스가 실제로 작업 폴더를 잡을 때까지 최대 10초 확인한다(고정 대기만 쓰면 PC 가 바쁠 때 흔들릴 수 있다)
+$w5 = 0; while ($w5 -lt 100 -and @(Get-CwdHolders $i5 | Where-Object { $_.pid -eq $holder.Id }).Count -lt 1) { Start-Sleep -Milliseconds 100; $w5++ }
 $h = @(Get-CwdHolders $i5)
 Check "설치 폴더를 작업 폴더로 잡은 프로세스를 찾는다(cmd pid $($holder.Id))" (@($h | Where-Object { $_.pid -eq $holder.Id }).Count -ge 1)
 $renamed = $true; try { Rename-Item -LiteralPath $i5 -NewName 'herdr-app.old-try' -ErrorAction Stop } catch { $renamed = $false }

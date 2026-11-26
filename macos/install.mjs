@@ -11,7 +11,8 @@ const mods = join(appHome, "mods");
 const name = "sodam-conversation-picker";
 const destination = join(mods, name);
 const owner = ".sodam-conversation-picker";
-const modFiles = ["mod.json", "main.js", "model.js", "config.js", "cli/sessions.mjs", "cli/kit.env"];
+const modSources = ["mod.json", "main.js", "icon.png"];
+const modFiles = [...modSources, "model.js", "config.js", "cli/sessions.mjs", "cli/kit.env"];
 const isPayloadLibrary = (path) => /^cli\/lib\/[a-z][a-z0-9-]*\.mjs$/.test(path);
 
 function findExecutable(explicit, fallbacks) {
@@ -98,7 +99,7 @@ function install() {
   const checkHome = mkdtempSync(join(tmpdir(), "sodam-herdr-check-"));
   try {
     mkdirSync(join(staged, "cli", "lib"), { recursive: true });
-    for (const path of ["mod.json", "main.js"]) copyFileSync(join(source, "mod", path), join(staged, path));
+    for (const path of modSources) copyFileSync(join(source, "mod", path), join(staged, path));
     copyFileSync(join(repository, "herdr-mod/session-keeper/model.js"), join(staged, "model.js"));
     copyFileSync(join(repository, "sessions.mjs"), join(staged, "cli/sessions.mjs"));
     for (const path of libraryFiles) copyFileSync(join(repository, path.slice(4)), join(staged, path));

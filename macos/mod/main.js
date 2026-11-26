@@ -1,4 +1,4 @@
-import { View, div } from "gpui-kit";
+import { View, div, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { checking, closeOverlay, exec, props, theme } from "herdr";
 import { ago, filterAi, matchItem, resumeCommand } from "./model.js";
@@ -133,7 +133,9 @@ export default class ConversationPicker extends View {
         }
       })
       .child(h_flex().gap(8).items_center()
+        .child(image("mods/sodam-conversation-picker/icon.png").w(36).h(36).flex_none())
         .child(text(17, "대화냥줍").font_semibold().flex_none())
+        .child(text(11, "Forked from SoDam Herdr Session Keeper", t.muted).truncate())
         .child(h_flex().flex_1().min_w(0).h(32).px(10).rounded(6).border_1().border_color(t.border)
           .child(Input.new(this.input).size_full().text_size(13).text_color(t.foreground)))
         .child(button("conversation-refresh", "새로고침", (_event, cx) => this.refresh(cx), { disabled: this.loading || this.running }))

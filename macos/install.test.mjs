@@ -68,6 +68,7 @@ printf '%s\\n' "$HERDR_APP_HOME" >> "$CHECK_LOG"
   delete env.SESSIONS_NO_CODEX;
   const install = (...args) => execFileSync(process.execPath, [installer, ...args], { env, encoding: "utf8" });
   install();
+  assert.ok(existsSync(join(destination, "icon.png")));
   assert.match(readFileSync(join(destination, "cli", "kit.env"), "utf8"), /KEEPER_HC_EXE=\/usr\/bin\/true/);
   const output = execFileSync(process.execPath, [join(destination, "cli", "sessions.mjs"), "json", "--all"], { env, encoding: "utf8" });
   const rows = JSON.parse(output);
@@ -80,6 +81,7 @@ printf '%s\\n' "$HERDR_APP_HOME" >> "$CHECK_LOG"
   install();
   assert.equal(readFileSync(checkLog, "utf8").trim().split("\n").length, 2);
   install("--uninstall");
+  assert.equal(existsSync(join(destination, "icon.png")), false);
   assert.equal(existsSync(join(destination, "main.js")), false);
   assert.equal(readFileSync(note, "utf8"), "keep");
   assert.equal(readFileSync(unrelated, "utf8"), "other mod");

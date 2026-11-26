@@ -7,6 +7,12 @@ import { fileURLToPath } from 'node:url';
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const SUITES = [
+  ...(process.platform === 'darwin' ? [
+    { key: 'mac-collect', name: '맥 대화 수집', cmd: 'node', args: ['mac-collect.test.mjs'] },
+    { key: 'mac-procs', name: '맥 프로세스 식별', cmd: 'node', args: ['mac-procs.test.mjs'] },
+    { key: 'mac-open', name: '맥 수동 재개', cmd: 'node', args: ['mac-open.test.mjs'] },
+    { key: 'mac-install', name: '맥 모드 설치와 제거', cmd: 'node', args: ['../macos/install.test.mjs'] },
+  ] : []),
   { key: 'contract', name: '계약: 다른 프로그램이 주는 파일·명령 모양', cmd: 'node', args: ['contract.test.mjs'] },
   { key: 'lib', name: '순수 함수: 창↔세션 연결·모델 이름·공용 도구', cmd: 'node', args: ['lib.test.mjs'] },
   { key: 'model', name: '창 화면 로직 (model.js)', cmd: 'node', args: ['model.test.mjs'], optional: true },

@@ -16,13 +16,13 @@
 // 읽기만 하는 명령은 list/json. open 만 Herdr 앱에 새 탭을 하나 연다(기존 창은 건드리지 않음).
 // 이미 어딘가에서 실행 중인 세션은 중복 실행(같은 대화에 두 창이 쓰는 사고)을 막기 위해 열지 않는다.
 // 환경변수(시험·점검용): SESSIONS_NO_CODEX=1 Codex 데이터를 읽지 않음 / SESSIONS_NO_HERDR=1 Herdr·프로세스 조회를 건너뜀 / CODEX_HOME Codex 데이터 폴더.
-import { join, dirname } from 'node:path';
+import { join, dirname, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UUID, fmtTime } from './lib/common.mjs';
 import { liveSessions, herdrMap, collectClaude } from './lib/claude.mjs';
 import { collectCodex } from './lib/codex.mjs';
 import { herdrWindows, focusWindow } from './lib/herdr.mjs';
-import { processSnapshot, codexResumeSnapshot } from './lib/procs.mjs';
+import { processSnapshot, codexResumeSnapshot, macUnidentifiedCodex } from './lib/procs.mjs';
 import { joinClaudeWindows, joinCodexWindows, joinCodexResume } from './lib/join.mjs';
 import { restoreRow, stubRow } from './lib/restore.mjs';
 import { keeperIndex, decorateKeeper, missingStubs, lastRestore, readHealth, keeperCommand, parsePlan, readAppUpdate, SID_RE, ADDR_RE } from './lib/keeper.mjs';
@@ -35,7 +35,10 @@ try {
   const ke = join(process.env.SESSIONS_KEEPER_DIR || dirname(fileURLToPath(import.meta.url)), 'kit.env');
   if (existsSync(ke)) for (const ln of readFileSync(ke, 'utf8').split(/\r?\n/)) {
     const m = /^([A-Z_]+)=(.+)$/.exec(ln); if (!m) continue; const k = m[1]; const d = m[2].trim();
-    if ((k === 'NODE_DIR' || k === 'HC_DIR') && existsSync(d) && !(';' + process.env.PATH + ';').toLowerCase().includes(';' + d.toLowerCase() + ';')) process.env.PATH = d + ';' + process.env.PATH;
+    if (['NODE_DIR', 'HC_DIR', 'CLAUDE_DIR', 'CODEX_DIR'].includes(k) && existsSync(d)) {
+      const dirs = (process.env.PATH || '').split(delimiter);
+      if (!dirs.includes(d)) process.env.PATH = [d, ...dirs].join(delimiter);
+    } else if (['KEEPER_CLAUDE_EXE', 'KEEPER_CODEX_EXE', 'KEEPER_HC_EXE'].includes(k) && !process.env[k]) process.env[k] = d;
     else if (k === 'APP_EXE' && !process.env.KEEPER_APP_EXE) process.env.KEEPER_APP_EXE = d;
     else if (k === 'APP_HOME' && !process.env.HERDR_APP_HOME) process.env.HERDR_APP_HOME = d;
     else if (k === 'CLAUDE_CFG' && !process.env.CLAUDE_CONFIG_DIR) process.env.CLAUDE_CONFIG_DIR = d;
@@ -57,16 +60,37 @@ const num = (name, dflt) => { const raw = opt(name, ''); const v = Number(raw); 
 
 // 모든 AI 의 세션을 모아 열려 있는 Herdr 창과 연결한다.
 async function collectAll({ days, limit, all }) {
-  const procsP = processSnapshot(), windowsP = herdrWindows(), resumeP = codexResumeSnapshot();   // 먼저 시작해 두고 파일 읽기와 겹친다
+  const procsP = processSnapshot(), windowsP = herdrWindows({ strict: process.platform === 'darwin' && cmd === 'open' }), resumeP = codexResumeSnapshot();   // 먼저 시작해 두고 파일 읽기와 겹친다
+  const uncertainP = macUnidentifiedCodex();
   const index = keeperIndex(MAP_FILE);                                     // 복구 대기 기록(Claude·Codex 공통)
   const claude = collectClaude({ days, limit, all, live: liveSessions(), map: herdrMap(MAP_FILE) });
   const windows = await windowsP;
   const resume = await resumeP;                                            // pid -> 대화ID (codex resume <ID> 로 켠 창)
   const procs = await procsP;
+  if (process.platform === 'darwin' && cmd === 'open' && !process.env.SESSIONS_NO_HERDR && !procs.size)
+    throw new Error('실행 중인 프로세스를 확인할 수 없습니다.');
   const liveTitles = windows.filter((w) => w.agent === 'codex').map((w) => String(w.title).split(' | ')[0].trim()).filter(Boolean);
-  const codex = collectCodex({ days, limit, all, liveTitles, mustIds: [...index.keys(), ...resume.values()] });   // 실행 중인 resume 대화는 --limit 과 무관하게 포함
+  const codex = collectCodex({ days, limit, all, liveTitles, mustIds: [...index.keys(), ...resume.values(), ...(cmd === 'open' ? [args[1]] : [])] });   // 실행 중인 resume 대화는 --limit 과 무관하게 포함
   const byResume = joinCodexResume([...claude, ...codex], resume, procs, windows);   // 1순위: 명령줄의 ID(정확)
-  const joined = joinClaudeWindows(joinCodexWindows(byResume.rows, windows.filter((w) => !byResume.addrs.has(w.addr))), procs, windows);   // 2순위: 창 제목(아직 안 이어진 창만)
+  const remaining = windows.filter((w) => !byResume.addrs.has(w.addr));
+  let candidates = byResume.rows;
+  if (process.platform === 'darwin') {
+    const liveIds = new Set(resume.values());
+    const unpairedCodex = await uncertainP || remaining.some((w) => w.agent === 'codex');
+    candidates = candidates.map((r) => {
+      if (r.ai === 'Claude Code') {
+        const pidName = procs.get(r.pid)?.name || '';
+        const uncertain = r.live && !/^(claude|claude-code)$/i.test(pidName);
+        return { ...r, addr: '', where: '', ...(uncertain && { matchUncertain: true }) };
+      }
+      if (r.live) return r;
+      if (liveIds.has(r.sid)) return { ...r, live: true };
+      return unpairedCodex ? { ...r, matchUncertain: true } : r;
+    });
+  } else {
+    candidates = joinCodexWindows(candidates, remaining);
+  }
+  const joined = joinClaudeWindows(candidates, procs, windows);   // 2순위: 창 제목(아직 안 이어진 창만)
   const decorated = decorateKeeper(joined, index);
   return [...decorated, ...missingStubs(decorated, index)].map(({ matchTitle, ...row }) => row).sort((a, b) => b.mtimeMs - a.mtimeMs);
 }
@@ -115,10 +139,22 @@ async function main() {
   } else if (cmd === 'open') {
     const q = (args[1] || '').trim();
     if (!q) { console.error('사용법: node sessions.mjs open <세션ID 또는 앞 6자 이상>'); process.exit(2); }
-    const rows = await collectAll({ days: num('days', 60), limit: 400, all: true });
+    let rows;
+    try {
+      rows = await collectAll({ days: num('days', 60), limit: 400, all: true });
+    } catch (error) {
+      emit({ ok: false, code: 'LOOKUP_FAILED', message: error.message }, 1);
+    }
     const rs = resolveSid(q, rows);
     if (rs.error) { console.error(rs.error); process.exit(2); }
-    const res = restoreRow(rows.find((r) => r.sid === rs.sid) || stubRow(rs.sid));
+    const row = rows.find((r) => r.sid === rs.sid) || stubRow(rs.sid);
+    let res;
+    if (process.platform === 'darwin' && row.live && row.addr && !row.matchUncertain) {
+      const result = focusWindow(row.addr);
+      res = { ok: result.ok, code: result.ok ? 'FOCUSED' : 'FOCUS_FAILED', message: result.ok ? '실행 중인 탭으로 이동했습니다.' : result.detail };
+    } else {
+      res = restoreRow(row);
+    }
     if (flag('json')) process.stdout.write(JSON.stringify(res)); else console.log((res.ok ? '✔ ' : '✘ ') + res.message);
     process.exit(res.ok ? 0 : 1);
   } else if (cmd === 'focus') {

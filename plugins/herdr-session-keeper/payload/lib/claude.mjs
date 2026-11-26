@@ -1,8 +1,8 @@
 // Claude Code 세션 수집: 실행 중 세션 파일 + 대화 기록(jsonl) 에서 ID·제목·폴더·모델을 읽는다. (읽기 전용)
 import { readdirSync, statSync, openSync, readSync, closeSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, basename } from 'node:path';
-import { UUID, readJson, pidAlive, readChunk, unescapeJson, lastMatch, cap } from './common.mjs';
+import { join } from 'node:path';
+import { UUID, readJson, pidAlive, readChunk, unescapeJson, lastMatch, cap, folderName, oneLine } from './common.mjs';
 
 // Claude Code 설정 폴더: CLAUDE_CONFIG_DIR 이 있으면 그것, 없으면 %APPDATA%\claude-code(이 PC 의 기존 위치)가 있을 때 그것, 아니면 ~\.claude(기본값).
 const APPDATA = () => process.env.APPDATA || '';
@@ -107,6 +107,21 @@ function listCandidates({ live, map, cutoff, all }) {
   return cands.sort((a, b) => b.mtimeMs - a.mtimeMs);
 }
 
+function latestUserPrompt(tail) {
+  const lines = tail.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    let record;
+    try { record = JSON.parse(lines[i]); } catch { continue; }
+    if (record?.type !== 'user' || record.isMeta || record.isSidechain) continue;
+    const content = record.message?.content;
+    const prompt = Array.isArray(content)
+      ? content.filter((block) => block?.type === 'text').map((block) => block.text).join(' ')
+      : content;
+    if (typeof prompt === 'string' && prompt.trim()) return prompt;
+  }
+  return '';
+}
+
 // 한 후보를 행으로 만든다. 숨겨야 하면 null. (싼 판정부터 해서 일찍 끝낸다: 숨길 기록이 수백 개라서)
 function buildRow(c, { lv, hm, all }) {
   // 실행 중인 세션은 종류로 판단한다: 자동 도우미(entrypoint sdk-cli)는 숨기고(파일도 안 읽음), 사용자가 연 세션은 실행 중이면 절대 숨기지 않는다.
@@ -114,7 +129,7 @@ function buildRow(c, { lv, hm, all }) {
   const hide = !all && !hm && !(lv && lv.entrypoint !== 'sdk-cli');
   if (hide && /double-shot-latte/i.test(c.proj)) return null;               // 1) 프로젝트 폴더 이름만으로 판정(파일을 읽지 않음)
   const tail = readChunk(c.full, 256 * 1024, true);                          // 2) 뒤쪽만 읽어 제목·마지막 질문으로 판정
-  const lastPrompt = lastMatch(tail, /"lastPrompt":"((?:[^"\\]|\\.)*)"/g) || '';
+  const lastPrompt = lastMatch(tail, /"lastPrompt":"((?:[^"\\]|\\.)*)"/g) || (all ? latestUserPrompt(tail) : '');
   let title = lastMatch(tail, /"aiTitle":"((?:[^"\\]|\\.)*)"/g) || '';
   if (hide && (AUTO_RE.test(title) || AUTO_RE.test(lastPrompt))) return null;
   if (!title) title = lastMatch(readChunk(c.full, 64 * 1024, false), /"aiTitle":"((?:[^"\\]|\\.)*)"/g) || '';
@@ -126,9 +141,9 @@ function buildRow(c, { lv, hm, all }) {
   return {
     ai: 'Claude Code', model,
     sid: c.sid, short: c.sid.slice(0, 8),
-    title: title || (lastPrompt ? lastPrompt.slice(0, 40) : '(제목 없음)'),
-    lastPrompt: lastPrompt.replace(/\s+/g, ' ').slice(0, 120),
-    cwd, folder: cwd ? basename(cwd) || cwd : '',
+    title: title || oneLine(lastPrompt, 40) || '(제목 없음)',
+    lastPrompt: oneLine(lastPrompt, 120),
+    cwd, folder: folderName(cwd),
     mtime: new Date(c.mtimeMs).toISOString(), mtimeMs: c.mtimeMs,
     live: !!lv, pid: lv ? lv.pid : null,
     addr: hm ? hm.addr : '', where: hm ? hm.where : '',

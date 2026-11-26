@@ -3,9 +3,9 @@
 // SESSIONS_NO_CODEX=1 이면 Codex 데이터를 아예 읽지 않는다(시험·점검용).
 import { createRequire } from 'node:module';
 import { readdirSync, statSync, existsSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { UUID, stripExtendedPrefix, oneLine } from './common.mjs';
+import { UUID, stripExtendedPrefix, oneLine, folderName } from './common.mjs';
 
 const requireCjs = createRequire(import.meta.url);
 
@@ -22,6 +22,10 @@ const mtimeOf = (f) => { let m = 0; for (const x of [f, f + '-wal']) { try { m =
 export function codexHome() {
   const home = process.env.USERPROFILE || homedir();
   const env = process.env.CODEX_HOME;
+  if (process.platform === 'darwin' && env) {
+    const db = latestStateDb(env);
+    return db ? { dir: env, db } : null;
+  }
   const found = [...new Set([...(env ? [env] : []), join(home, '.codex_runtime'), join(home, '.codex')])]
     .map((dir) => ({ dir, db: latestStateDb(dir) })).filter((x) => x.db && existsSync(x.db));
   if (!found.length) return null;
@@ -51,7 +55,7 @@ function toRow(r) {
     sid: String(r.id), short: String(r.id).slice(0, 8),
     title: title || '(제목 없음)', matchTitle: oneLine(r.name || r.title, 200),
     lastPrompt: oneLine(r.preview || r.first_user_message, 120),
-    cwd, folder: cwd ? basename(cwd) || cwd : '',
+    cwd, folder: folderName(cwd),
     mtime: new Date(ms).toISOString(), mtimeMs: ms,
     live: false, pid: null, addr: '', where: '',
   };
@@ -101,7 +105,7 @@ export function collectCodex({ days, limit, all, liveTitles = [], mustIds = [] }
     }
     return out;
   } catch (e) {
-    if (process.env.SESSIONS_DEBUG) console.error('[Codex 읽기 실패]', e && e.message);
+    if (process.platform === 'darwin' || process.env.SESSIONS_DEBUG) console.error('[Codex 읽기 실패]', e && e.message);
     return [];
   } finally { try { db?.close(); } catch { /* 이미 닫힘 */ } }
 }

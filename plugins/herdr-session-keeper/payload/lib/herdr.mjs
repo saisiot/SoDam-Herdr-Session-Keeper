@@ -2,7 +2,7 @@
 import { execFile, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
-export const herdrApp = () => process.env.KEEPER_APP_EXE || join(process.env.LOCALAPPDATA || '', 'Programs', 'herdr-app', 'herdr-app.exe');
+export const herdrApp = () => process.env.KEEPER_APP_EXE || (process.platform === 'darwin' ? 'herdr-app' : join(process.env.LOCALAPPDATA || '', 'Programs', 'herdr-app', 'herdr-app.exe'));
 
 function run(cmd, args, timeout = 10000) {
   return new Promise((resolve) => {
@@ -12,13 +12,17 @@ function run(cmd, args, timeout = 10000) {
 const parse = (s) => { try { return JSON.parse(String(s).replace(/^﻿/, '')); } catch { return null; } };
 
 // 지금 Herdr 에 떠 있는 창들: 주소·이름·AI 종류·창 제목·셸 pid. (읽기 전용. SESSIONS_NO_HERDR=1 이면 건너뜀)
-export async function herdrWindows() {
+export async function herdrWindows({ strict = false } = {}) {
   if (process.env.SESSIONS_NO_HERDR) return [];
-  const ls = parse((await run('hc', ['ls', '--json'])).stdout);
+  const hc = process.env.KEEPER_HC_EXE || 'hc';
+  const response = await run(hc, ['ls', '--json']);
+  const ls = response.ok ? parse(response.stdout) : null;
+  if (strict && !Array.isArray(ls?.terminals)) throw new Error('Herdr의 열린 탭을 확인할 수 없습니다.');
   const terms = (ls?.terminals || []).filter((t) => t.state === 'live' && t.address);
-  const details = await Promise.all(terms.map((t) => run('hc', ['get', t.address, '--json'])));
+  const details = await Promise.all(terms.map((t) => run(hc, ['get', t.address, '--json'])));
   return terms.map((t, i) => {
-    const g = parse(details[i].stdout) || {};
+    const g = (details[i].ok && parse(details[i].stdout)) || {};
+    if (strict && !(g.pid || g.foreground?.pid)) throw new Error('실행 중인 탭의 프로세스를 확인할 수 없습니다.');
     return {
       addr: t.address, agent: t.agent || '', where: t.where || g.labels?.where || '', status: t.status || '',
       title: g.title || '', shellPid: Number(g.pid) || 0, fgPid: Number(g.foreground?.pid) || 0,

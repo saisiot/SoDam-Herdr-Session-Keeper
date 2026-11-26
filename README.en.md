@@ -4,7 +4,7 @@
 
 > **In one sentence**: A Windows tool that helps you pick up your AI conversations (Claude Code · Codex) again from a list after the computer shuts down or a Herdr window suddenly closes, and that also fixes the "Herdr never updates while it stays open" problem.
 
-- Document version: kit 1.1.3 · written 2026-11-20
+- Document version: kit 1.1.3 · written 2026-11-20 · last updated 2026-11-26
 - This document is written so that **people who are new to computers and AI tools** can follow it. If you meet an unfamiliar word, read [2. Glossary](#2-glossary) first.
 - The same content is in four files: `README.md` (Korean), `README.en.md` (English), `README.html` (Korean, for web browsers) and `README.en.html` (English, for web browsers). The HTML files are generated from the md files, so the content is always the same (see [12. Files and documents](#12-files-and-documents)).
 - Note: the buttons and tabs of the Session Keeper window are in Korean. This document shows the Korean label in `backticks` next to the English meaning.
@@ -127,7 +127,7 @@ People who use Herdr on Windows and run several jobs at once with Claude Code or
 
 ## 4. How to download
 
-> **Current status (2026-11-11)**: this kit is published in the GitHub repository <https://github.com/sodam-ai/SoDam-Herdr-Session-Keeper>. Get it with the methods in 4.3 below.
+> **Current status (confirmed 2026-11-26)**: this kit is published in the GitHub repository <https://github.com/sodam-ai/SoDam-Herdr-Session-Keeper>. Get it with the methods in 4.3 below.
 
 ### 4.1 Getting Herdr
 
@@ -201,9 +201,9 @@ It only checks Node.js, Herdr, the settings folder and any existing install in a
 | 1/6 Environment check | Finds Node.js 18+, the Herdr app, `hc` and the Herdr settings folder. Looks for a Session Keeper already installed in another location. |
 | 2/6 Copy programs | Copies the program files to the install location (if there is an earlier install, one set is backed up and the latest 3 are kept) and writes the locations it found into `kit.env`. |
 | 3/6 Herdr mod | Copies 3 screen files into `mods\session-keeper`, fills in the install location and the node path, then runs Herdr's official check (`herdr-app check`). |
-| 4/6 Key binding | Adds one line for `Ctrl+Shift+R` to `keys.json` (original backed up as `keys.json.bak-before-session-keeper-kit`; if the JSON would break after the addition, the original is kept). |
+| 4/6 Key binding | Adds one line for `Ctrl+Shift+R` to `keys.json` (original backed up as `keys.json.bak-before-session-keeper-kit`). If you pass `-NoKey` or there is no `keys.json`, this step is skipped, and if the result after the addition is not valid JSON, nothing is written to the file. If Herdr already uses the chosen key for another feature, only that line is skipped and the install carries on (you can still open it with `Ctrl+Shift+P`). |
 | 5/6 Automatic-start task | Creates `HerdrSessionKeeper-Watchdog` in Task Scheduler (every minute; starts the keeper only while Herdr is running). |
-| 6/6 Wrap-up | Writes the install record (`kit.install.json`) and, if Herdr is running, calls the watchdog once immediately. |
+| 6/6 Wrap-up | Writes the install record (`kit.install.json`) and, if the automatic-start task was registered and Herdr is running, calls the watchdog once immediately (it does not if you used `-NoTask` or the task registration failed). |
 
 ### 5.5 Install options
 
@@ -227,7 +227,7 @@ If a Task Scheduler task or a mod pointing to another location exists, the insta
 
 ### 5.7 How it keeps working when the environment, folder or computer changes
 
-At install time it **finds the following on that PC** and records them in `kit.env` (no path is hard-coded in the code).
+It **finds the following on that PC** (no path is hard-coded in the code). Node and `hc` are found at install time and recorded in `kit.env`; the Herdr app and the Herdr settings folder are recorded only when they are not in the default place; the Claude and Codex conversation folders are searched every time the program runs.
 
 | What is searched | Order |
 |---|---|
@@ -236,7 +236,7 @@ At install time it **finds the following on that PC** and records them in `kit.e
 | hc (herdr-core) | PATH → `herdr-core` next to the app → `%LOCALAPPDATA%\Programs\herdr-core` |
 | Herdr settings folder | `-HerdrHome` → environment variable `HERDR_APP_HOME` → `%USERPROFILE%\.config\herdr-app` |
 | Claude settings folder | environment variable `CLAUDE_CONFIG_DIR` → `%APPDATA%\claude-code` (if present) → `%USERPROFILE%\.claude` |
-| Codex data | environment variable `CODEX_HOME`, `%USERPROFILE%\.codex`, `%USERPROFILE%\.codex_runtime` (all that exist) |
+| Codex data | the folder in the environment variable `CODEX_HOME` if set. Otherwise **one place**: whichever of `%USERPROFILE%\.codex_runtime` and `%USERPROFILE%\.codex` has the more recently written state file |
 
 To move the install, install again at the new place with `-InstallDir newplace`. If the files at the old place are already gone (you moved or deleted them), the installer says "it looks like you moved the folder" and re-links to the new place without `-Force`. If the old place is still there (you only copied), it is treated as a different install and stops, so remove the old place with `uninstall.ps1 -InstallDir oldplace` or add `-Force`. If the drive of the old place does not exist at all (an external disk may be unplugged), it stops to be safe. **If you move the folder and do not install again**, the recovery scheduled task that runs every minute points at the old place, fails, and the keeper does not start (measured).
 
@@ -358,18 +358,18 @@ A window shown as `ID 확인 불가` (ID cannot be determined) can be clicked to
 
 ### 8.5 How to use automatic app updates
 
-The update state appears on one line at the top of the Session Keeper window.
+The update line at the top of the Session Keeper window appears **only when a new version exists or automatic update is off**. If there is no line, it is up to date and automatic update is on.
 
 | State | Meaning |
 |---|---|
 | New version downloaded (`ready`) | Herdr has downloaded a new version (for example 0.1.15) but it is not applied yet |
 | Window restart needed (`restart`) | The files are the new version but the window is still running the old version |
-| Nothing to do (`none`) | Up to date |
+| Nothing to do (`none`) | Up to date (in this state the update line is not shown on the screen) |
 
 | Button | What it does |
 |---|---|
 | **App update** (`앱 업데이트`) | Replaces the files safely and **restarts only the Herdr window** (terminals are kept by `herdr-core`). **Runs only after two clicks.** The window closes and opens briefly. |
-| **Automatic update: on/off** (`자동 업데이트: 켜짐/꺼짐`) | Switches automatic applying on and off (default on). Turning it off creates the file `session-keeper.appupdate.off`. |
+| **Automatic update: on/off** (`자동 업데이트: 켜짐/꺼짐`) | Switches automatic applying on and off (default on). This button is inside the update line, so it is not shown in the usual state (up to date and automatic update on); to turn it off then, use `-Mode Update -Auto Off`. Turning it off creates the file `session-keeper.appupdate.off`. |
 
 > **These two buttons are close together, so look at the screen when you click.** On the development PC there was once a case where an update and "automatic update off" were recorded in the same second (cause not confirmed; a shifting button position is possible). If that is not what you wanted, turn it on again with `-Mode Update -Auto On`.
 
@@ -408,14 +408,14 @@ The keeper reads the list of open windows from the Herdr core (`hc ls`), finds t
   1. `codex resume <ID>` in the command line (windows restored by the keeper all use this, so it is exact).
   2. Same working folder + a conversation file updated after the window started.
   3. If there is more than one Codex window in the same folder, **screen matching**: compare whether the first 40 characters (whitespace ignored) of a candidate conversation's latest statement appear on a window's screen (`hc read`), and confirm **only when one window matches exactly one candidate and that candidate does not overlap with another window**.
-- For a record of a window that disappeared during the same boot, it distinguishes "accident (6 or more at once)" from "closed by the user (1–2)": an accident is **kept**, and ones the user ended are tidied up after 2 minutes.
+- When a window itself disappears: if the same Herdr is still running and the end reason is `killed` (the tab or space was closed directly), it is treated as "closed by the user" and removed from the restore list at once. Anything else (core restart, whole app shut down, no end record, 6 or more ending within 30 seconds) is treated as an accident or uncertain and is **kept**. If the window is still open but only Claude ended (for example `/exit`), it is tidied up after about 2 minutes (two checks).
 - A window you closed yourself is written to the log as `직접 닫은 창: … (다시 열려면 claude --resume <ID>)` (window closed by hand … to reopen use …) and leaves the restore list. Condition: the same Herdr is still running (at least one live window) and that window's end record is `killed`. If the judgement is uncertain it is **treated as an accident and kept**.
 
 ### 9.2 When Herdr is started again: restoring
 
-1. When the keeper starts it begins restore attempts (every 30 seconds for 10 minutes; up to 30 minutes if items are left).
+1. When the keeper detects that the Herdr app has newly started, it begins restore attempts after 20 seconds (every 30 seconds for 10 minutes; up to 30 minutes if items are left; it ends early after 3 rounds in a row with nothing to do). An accident where 6 or more windows died at once while the app stayed up is restored the same way.
 2. The **automatic restore targets** are only "windows that were open just before closing" (within 10 minutes of the latest last-seen time). Older items remain in the restore list as `직접 복구` and are restored by button only.
-3. Order: space names in `restore-priority.txt` (default `프로젝트`) → inside the same space the most recently used first → window address. Batches of 6 with 4 seconds between batches.
+3. Order: space names written in `restore-priority.txt` in the install folder (you must **create this file yourself**; without it there is no space ordering) → inside the same space the most recently used first → window address. Batches of 6 with 4 seconds between batches.
 4. By window type:
    - **A window that came back as an empty shell** → type `claude --resume <ID>` (or `codex resume <ID>`) into that shell. Layout and name are kept.
    - **A window that ended** → create a **new tab** in the space of the same name and run it (from 120 seconds after the core started).
@@ -454,7 +454,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<install location>\session-
 | `Snapshot` (default) | Records the current state once |
 | `Recover` | Restores once, right now. With `-Plan` it is a **preview** (nothing typed or created), `-Only <window address>` restores only that window, `-Batch <count>` (default 6) and `-DelaySec <seconds>` (default 4) adjust speed |
 | `Run` | The watch loop (the mode Task Scheduler starts). `-RecentMin <minutes>` (default 10; 0 restores everything as before) · `-AppGoneExitSec <seconds>` (default 120) |
-| `Forget` | Remove from the restore list. `-Sid <8 or more characters of the session ID>` for one, `-Stale` for old items in bulk (backed up first) |
+| `Forget` | Remove from the restore list. `-Sid <6 or more characters of the session ID>` for one (the 8 characters inside `[ ]` in the restore result file also work), `-Stale` for old items in bulk (backed up first) |
 | `Update` | Herdr app update. Options: `-NoRestart` (replace files only, leave the window) / `-Auto On\|Off\|Status` / `-Launcher Install\|Uninstall\|Status` |
 
 ### 10.2 List/restore tool (`sessions.mjs`, Node.js)
@@ -473,6 +473,7 @@ node "<install location>\sessions.mjs" <command>
 | `plan start` / `plan read` | Run / read the "restore all" preview |
 | `recover <window address\|all>` | Restore waiting work through the keeper (in the background) |
 | `forget <ID>` / `forget-old` | Remove from waiting / remove old items in bulk |
+| `health` | Show the keeper's recognition-rate check result (`keeper-health.json`) as JSON (read-only; `null` if the file does not exist) |
 | `update-state` / `update` / `update-auto on\|off` | App update state / apply / switch automatic on or off |
 | `set-key <key\|reset\|remove> [--replace]` | Changes the shortcut that opens the Session Keeper window (the command the window's [단축키] button uses. A clashing key is refused; only `--replace` overwrites) |
 
@@ -513,7 +514,7 @@ Environment variables are **not required.** The installer finds the locations on
 | `HERDR_APP_HOME` | Herdr settings folder | `%USERPROFILE%\.config\herdr-app` |
 | `KEEPER_APP_EXE` | Path of `herdr-app.exe` | `%LOCALAPPDATA%\Programs\herdr-app\herdr-app.exe` |
 | `CLAUDE_CONFIG_DIR` | Claude Code settings folder | `%APPDATA%\claude-code` (if present) → `%USERPROFILE%\.claude` |
-| `CODEX_HOME` | Codex data folder | `%USERPROFILE%\.codex` and `.codex_runtime` are searched as well |
+| `CODEX_HOME` | Codex data folder | If unset, the more recently written of `.codex_runtime` and `.codex` is used |
 | `KEEPER_APP_PROC` | (for tests) Name of the app process to watch | `herdr-app` |
 | `SESSIONS_KEEPER_DIR` | (for tests) Folder from which `sessions.mjs` reads keeper records | The folder containing `sessions.mjs` |
 | `SESSIONS_NO_HERDR` · `SESSIONS_NO_CODEX` | (for tests/checks) `1` turns off the Herdr query / the Codex reading | Off |
@@ -539,6 +540,18 @@ node build-readme.mjs         # 3) if you changed README.md / README.en.md, rebu
 ## 11. Update summary
 
 <details>
+<summary><b>Documentation and test update (2026-11-26) — no product code change (kit version stays 1.1.3)</b></summary>
+
+- **The product (keeper, install tool, window screen) did not change.** The 5 core files (`session-keeper.ps1`, `sessions.mjs`, `scan-monitors.mjs`, `herdr-launch.ps1`, the watchdog `.vbs`) were confirmed identical to the development copy. So no new release version was made.
+- **Newly confirmed (development PC)**: on 2026-11-21 the user added the marketplace and installed 1.1.3 themselves, and a 6-step rehearsal install with the installed tool, using a temporary folder and a temporary task name, passed all 19 checks (the real Session Keeper, task and `keys.json` stayed unchanged). All 3 real PC restarts passed, and in the most recent (2026-11-22) 29 of the 29 windows recorded before the restart were restored (0 failures). This confirms the "real restart restore after the old-pid fix" that the 1.1.3 entry below lists as not yet verified. On 2026-11-26 all 22 test suites, 694 checks, passed again.
+- **Test fixes**: the fixed 0.8-second wait in the app-update test became a state check of up to 10 seconds (reduces intermittent failures; the checks are unchanged), and the summary line format of the old-pid reuse test was fixed.
+- **Security and legal review**: all 14 hostile inputs were blocked, the security tests passed 34/34, and secrets were 0. The `LICENSE` was compared line by line with the official Apache text ([chapter 18](#18-legal-copyright-license-and-commercial-use)). The caution that installing on a drive such as `D:` may inherit write permission for all users is in [15.4](#154-security-cautions).
+- **Documents**: the whole Korean and English README was checked against the code and stale or wrong parts were fixed (install step 3/6 `WARN` display, path mistakes, the log line for a helper keeper that exits, keeper restart time of 3–4 minutes, when the update line is shown, how a closed window and an accident are judged, when a restore starts, the rule for choosing the Codex folder, etc.). A plain-language summary table (18.7) and a caution about AI-generated content (18.8) were added.
+- **Left as is**: the keeper log line `루프 오류(계속 진행)` (32 in total, cause unverified), the heartbeat not being refreshed during a restore, and the install 3/6 wording. Installation on another PC or Windows 10 is unverified.
+
+</details>
+
+<details>
 <summary><b>Kit 1.1.3 (2026-11-20) — recognition-rate check warning · fix for record-saving collisions</b></summary>
 
 - **Recognition-rate check warning (new)**: every minute the keeper compares "the number of windows Herdr reports as Claude windows" with "the number the keeper recognized as Claude". If there are 3 or more windows and fewer than half are recognized for 3 minutes in a row, it warns through the log and a Windows notification (again every 6 hours) and a red line appears at the top of the keeper window. If the check record is not refreshed for over 6 minutes, it shows "check stopped". It only warns; it does not touch records, restore or input. It stays quiet during a restore and within 5 minutes after the keeper starts.
@@ -550,7 +563,7 @@ node build-readme.mjs         # 3) if you changed README.md / README.en.md, rebu
 - **Re-install after moving the folder**: if the files at the old place are gone, the installer re-links to the new place without `-Force` (see [5.7](#57-how-it-keeps-working-when-the-environment-folder-or-computer-changes)). If the old place is still there or its drive is missing, it stops as a conflict like before.
 - **Herdr app location re-search**: if the app location written at install time is stale (the app was reinstalled somewhere else), the keeper searches again: the running app, then the default install location, then PATH. A location the user set with an environment variable is respected as is.
 - **Tests**: added tests for the check, the state file, saving collisions, old-pid reuse (11 checks) and re-install after a folder move plus the app location re-search (5 checks); all 22 suites pass. The "auto-start rule" test used to count app processes once and sometimes failed falsely when another program briefly started an app process at that moment; it now waits and checks whether the count stays increased.
-- **Not verified**: a real PC restart restore after the old-pid fix (that fix was verified only with a replay test using fake session files and a waiting process), a real-PC check of re-install after a folder move (only tested with temporary folders and a temporary task), another PC, Windows 10. The recognition-rate warning was verified with fake data and a replay of the past incident (2026-11-14); I have not yet seen it fire in a real incident. Also, the keeper sometimes disappears without a normal-exit mark (it happened once more on 2026-11-20 at 14:34; the watchdog task started it again within about 4 minutes and no window was affected). I have not yet found the cause.
+- **Not verified (as of the 2026-11-20 release)**: a real PC restart restore after the old-pid fix (at release time that fix was verified only with a replay test using fake session files and a waiting process, and **it was later confirmed by a real restart on 2026-11-22: 29 of 29 windows restored**), a real-PC check of re-install after a folder move (only tested with temporary folders and a temporary task), another PC, Windows 10. The recognition-rate warning was verified with fake data and a replay of the past incident (2026-11-14); I have not yet seen it fire in a real incident. Also, the keeper sometimes disappears without a normal-exit mark (it happened once more on 2026-11-20 at 14:34; the watchdog task started it again within about 4 minutes and no window was affected). I have not yet found the cause.
 - Shortcut and app-update behavior are unchanged. Restore behavior changed only by the "old process number reuse" fix above, and the install kit only by "re-install after moving the folder" above. The keeper program applies the new code the next time it restarts.
 
 </details>
@@ -569,7 +582,7 @@ node build-readme.mjs         # 3) if you changed README.md / README.en.md, rebu
 </details>
 
 <details>
-<summary><b>Kit 1.1.1 (2026-11-16) — security review fixes</b></summary>
+<summary><b>Kit 1.1.1 (released 2026-11-18) — security review fixes</b></summary>
 
 - **Install and uninstall data protection**: install is refused into a folder that holds other files or into a drive root, and `uninstall.ps1 -RemoveData` no longer deletes the whole folder; it deletes only the files Session Keeper created (the folder stays if other files are in it). Before, installing into a wrong folder and then uninstalling with `-RemoveData` also deleted that folder's other files.
 - **Shortcut file protection**: a `keys.json` you locked as read-only is not changed (you are told instead). A shortcut can now be bound in an empty `global` section, and the new line matches the file's indentation.
@@ -618,7 +631,7 @@ node build-readme.mjs         # 3) if you changed README.md / README.en.md, rebu
 <summary><b>2026-11-11 — Codex window matching improved</b></summary>
 
 - The problem that restoring was impossible when there were several Codex windows in the same folder (all 6 Codex windows on the development PC were affected) is improved with **screen matching** (confirmed only when a window and a candidate conversation match each other uniquely).
-- Both Codex data folders (`~/.codex`, `~/.codex_runtime`) are searched.
+- Both Codex data folders (`~/.codex`, `~/.codex_runtime`) are candidates, and the one whose state file was written more recently is used (the folder in `CODEX_HOME` takes priority if set).
 - Limit: only fake-data tests passed. No Codex window was open at the time of testing, so it was not confirmed on a real window.
 
 </details>
@@ -807,9 +820,9 @@ Design principles:
 
 | Question | Answer |
 |---|---|
-| Does it send things to the internet? | **No.** I searched the source code (`.ps1` `.mjs` `.js` `.vbs`) for internet-access code (`http`, `Invoke-WebRequest`, `fetch`, etc.) and **found none** (confirmed by search). A new version of the Herdr app is downloaded by **Herdr itself**; this tool only moves the downloaded files into place. |
+| Does it send things to the internet? | **No.** I searched the source code (`.ps1` `.mjs` `.js` `.vbs`) for internet-access code (`http`, `Invoke-WebRequest`, `fetch`, etc.) and **found none** (confirmed by search; the address text `https://nodejs.org` in the install tool's Node.js hint is a hint message, not connection code). A new version of the Herdr app is downloaded by **Herdr itself**; this tool only moves the downloaded files into place. |
 | Does it need administrator rights? | No. It works only within the current user's scope. |
-| Does it handle passwords or API keys? | No. The 28 files of the kit (and also the whole repository of 90 files and the 24 commits of the Git history) were searched for keys, tokens, passwords, private keys and e-mail strings, with **0 hits**. |
+| Does it handle passwords or API keys? | No. The 28 files of the kit (and also the whole repository of 90 files and the 24 commits of the Git history as of the 2026-11-26 check) were searched for keys, tokens, passwords, private keys and e-mail strings, with **0 hits**. |
 | Does it read conversation content? | To display the list it reads the **title, part of the last request, folder and model** from Claude conversation records (`.jsonl`); for Codex it reads conversation files and part of the **window screen text (`hc read`)**. All of it is processed **only inside this PC** and shown on screen. |
 | Does it send input? | **Yes, in one case only**: the restore that types `claude --resume <ID>` / `codex resume <ID>` into an empty shell window (when all safety rules pass). It types into no other windows. |
 | Does it delete anything? | It **does not delete** conversation records. It only tidies old backups in its own folder (keeping only the latest few) and temporary files. The uninstall tool also deletes only what was installed. |
@@ -874,7 +887,7 @@ It **does not touch** Claude Code settings (`settings.json` etc.) or Codex setti
 | Automatic update suddenly "off" | The button was clicked, or clicked together with App update | `-Mode Update -Auto On` |
 | Characters look garbled (`?`, strange characters) | Console encoding | No effect on operation. If you need to check, run `chcp 65001` first |
 | A red line at the top of the keeper window: `점검 필요: Claude 창 N개 중 M개만 인식 중` (check needed: only M of N Claude windows recognized) | The keeper has failed to recognize the open Claude windows for over 3 minutes (if this continues, a restore after a PC restart may not work) | In `session-keeper.log`, read the warning line for the cause counts (window lookup failed / Claude not found, etc.). If it was temporary, the log later says `정상으로 돌아왔습니다` (back to normal). If it continues, keep the log and report an issue |
-| A warning that the keeper disappeared | Keeper replaced or ended | The log line "같은 부팅 안에서 이전 감시가 … 사라졌습니다" (the earlier watcher disappeared during the same boot) — the watchdog starts it again in a minute. If it repeats, check the log before and after |
+| A warning that the keeper disappeared | Keeper replaced or ended | The log line "같은 부팅 안에서 이전 감시가 … 사라졌습니다" (the earlier watcher disappeared during the same boot) — the watchdog starts it again (it starts it only after confirming the check record has been stopped for over 3 minutes, so it can take up to 3–4 minutes). If it repeats, check the log before and after |
 | Install step 3/6 shows `검사 실행 실패: WARN …` (check run failed: WARN …) | Cause not settled (observation: the `WARN` of Herdr's official check is printed together) | The install carries on and finished 4/6 to 6/6 (the 2026-11-21 rehearsal install passed all 19 checks). Do not judge it a failure from this wording alone. **If step 6/6 is printed to the end and the exit code is 0, it is normal** |
 | `install.ps1` gives `cannot find the file`, or `-Check` seems to do nothing | The terminal's current location is not the kit folder while you used a short path such as `.\install.ps1`, or you left out the leading `powershell` | Run it with the **full path**: `powershell -NoProfile -ExecutionPolicy Bypass -File "C:\myfolder\install.ps1" -Check`. Or open the kit folder in File Explorer, type `powershell` in the address bar to open a terminal in that folder, then run it |
 | The log shows `… 심박이 N초째 멈춰 있습니다 … 새 프로세스는 종료합니다` (the heartbeat has been stopped for N seconds … the new process exits) | While a restore takes long, the check record (heartbeat) stops being refreshed, so the watchdog started a helper keeper and that keeper exited by itself | In both observed cases (2026-11-21, 2026-11-22) the restore result was not affected. If it repeats, check the log before and after |
@@ -1086,7 +1099,7 @@ Below is the `LICENSE` (Apache License 2.0) in plain words. No legal effect is g
 
 ## 19. Verification status and known limits
 
-### 19.1 What was confirmed (2026-11-11 · updated 2026-11-16, development PC)
+### 19.1 What was confirmed (updated 2026-11-26, development PC)
 
 | Item | Result |
 |---|---|
@@ -1097,7 +1110,7 @@ Below is the `LICENSE` (Apache License 2.0) in plain words. No legal effect is g
 | Real Herdr window | Opened the real window with `herdr-app do mod.open` and `herdr-app shot` and **confirmed the Restore-pending tab by screenshot** (layout fine, 0 Herdr errors) |
 | Marketplace format check | `claude plugin validate` passed (only a "no author information" warning) |
 | App update | Fake-app tests + confirmed on a separate test Herdr + the development PC's real Herdr replaced and restarted from 0.1.14→0.1.15 (26 terminals kept) |
-| Secret / personal-path scan | 0 hits in the kit's 28 files. Also no secrets, personal e-mail or forbidden files in the whole repository of 90 files and the 24 commits of the Git history (all branches and tags); only two things are flagged: the fake example path `C:\Users\myname` used in the glossary, and 1 detection rule that the kit build tool `build-kit.mjs` itself holds to find personal traces (neither is a real exposure). On 2026-11-26 the 6 record and log files of the development PC were also scanned for key, token, password and private-key patterns, with 0 hits (these files are not uploaded to Git) |
+| Secret / personal-path scan | 0 hits in the kit's 28 files. Also no secrets, personal e-mail or forbidden files in the whole repository of 90 files and the 24 commits of the Git history as of the 2026-11-26 check (all branches and tags); only two things are flagged: the fake example path `C:\Users\myname` used in the glossary, and 1 detection rule that the kit build tool `build-kit.mjs` itself holds to find personal traces (neither is a real exposure). On 2026-11-26 the 6 record and log files of the development PC were also scanned for key, token, password and private-key patterns, with 0 hits (these files are not uploaded to Git) |
 
 ### 19.2 What could not be confirmed (unverified / not run)
 
@@ -1145,6 +1158,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File plugins\herdr-session-keeper
 | Program files | Always (restore records and logs are **kept**). With `-RemoveData` the files Session Keeper created (including restore records and logs) are deleted too, and if the folder holds **other files, those files and the folder are left alone** (only when an install record exists) |
 
 It does not touch the Herdr app, terminals, other mods or Claude/Codex conversation records.
+
+**Good to know**: the uninstall tool `uninstall.ps1` is not copied into the install folder; it is in `plugins\herdr-session-keeper\` of the kit folder (if you installed through the marketplace, under the Claude Code settings folder at `plugins\cache\herdr-session-keeper-market\herdr-session-keeper\<version>\`). A default uninstall (without `-RemoveData`) also deletes `_backup\` (the backup for rolling back an app update) and `lib\`, so if you might need to roll back, copy `_backup\<time>\` somewhere else before uninstalling. `shortcut-backup\` is deleted only with `-RemoveData`. Even if you changed the shortcut, all Session Keeper binding lines (`mod.open:session-keeper`) are removed.
 
 ### 20.2 Rolling back individual parts
 

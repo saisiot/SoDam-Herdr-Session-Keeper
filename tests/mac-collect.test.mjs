@@ -32,7 +32,11 @@ try {
     user([{ type: 'tool_result', content: '도구 결과' }]),
     user('내부 메시지', { isMeta: true }),
   ];
-  writeFileSync(join(claudeProject, claudeId + '.jsonl'), records.map((record) => JSON.stringify(record)).join('\n'));
+  const jsonl = records.map((record) => JSON.stringify(record).replace('"cwd":', '"cwd": ')).join('\n');
+  writeFileSync(join(claudeProject, claudeId + '.jsonl'), jsonl);
+  const alias = claudeProject + '-alias';
+  mkdirSync(alias);
+  writeFileSync(join(alias, claudeId + '.jsonl'), jsonl);
 
   const db = new DatabaseSync(join(codexDir, 'state_5.sqlite'));
   try {

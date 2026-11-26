@@ -80,7 +80,8 @@ async function collectAll({ days, limit, all }) {
     candidates = candidates.map((r) => {
       if (r.ai === 'Claude Code') {
         const pidName = procs.get(r.pid)?.name || '';
-        const uncertain = r.live && !/^(claude|claude-code)$/i.test(pidName);
+        const verified = windows.some((w) => w.fgPid === r.pid && w.claudeResumeId === r.sid);
+        const uncertain = r.live && !verified && !/^(claude|claude-code)$/i.test(pidName);
         return { ...r, addr: '', where: '', ...(uncertain && { matchUncertain: true }) };
       }
       if (r.live) return r;

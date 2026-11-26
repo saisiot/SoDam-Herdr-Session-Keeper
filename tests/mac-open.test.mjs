@@ -43,14 +43,15 @@ syncBuiltinESMExports();
 `);
     writeFileSync(join(fakeBin, 'hc'), `#!/usr/bin/env node
 const args = JSON.stringify(process.argv.slice(2));
-const live = process.env.FAKE_HC_LIVE === '1';
+const live = !!process.env.FAKE_HC_LIVE;
+const claudeSession = process.env.FAKE_HC_LIVE === 'claude';
 if (args === '["ls","--json"]') {
-  const terminals = live ? [{ state: 'live', address: 't2', agent: 'codex', where: '테스트 공간' }] : [];
+  const terminals = live ? [{ state: 'live', address: 't2', agent: claudeSession ? 'claude-code' : 'codex', where: '테스트 공간' }] : [];
   console.log(JSON.stringify({ terminals }));
   process.exit(process.env.FAKE_HC_FAIL === '1' ? 1 : 0);
 }
 if (live && args === '["get","t2","--json"]') {
-  console.log(JSON.stringify({ pid: 10, foreground: { pid: 11 }, title: '관계없는 제목' }));
+  console.log(JSON.stringify({ pid: 10, foreground: claudeSession ? { pid: Number(process.env.FAKE_PID), argv: ['2.1.322', '--resume', process.env.FAKE_SID] } : { pid: 11 }, title: '관계없는 제목' }));
   process.exit(0);
 }
 process.exit(2);
@@ -58,6 +59,10 @@ process.exit(2);
     writeFileSync(app, `#!/usr/bin/env node
 const { appendFileSync } = require('node:fs');
 appendFileSync(process.env.FAKE_APP_CAPTURE, JSON.stringify(process.argv.slice(2)) + '\\n');
+if (process.env.FAKE_EMPTY_SPACE === '1' && process.argv[3] === 'terminal.open') {
+  console.error(JSON.stringify({ error: 'no space yet: make one first (space.new)' }));
+  process.exit(1);
+}
 Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
 console.log(JSON.stringify({ terminal: 't1', tab: 'x' }));
 `, { mode: 0o755 });
@@ -127,7 +132,7 @@ console.log(JSON.stringify({ terminal: 't1', tab: 'x' }));
     const [request] = captured;
     assert.deepEqual(request.slice(0, 2), ['do', 'terminal.open']);
     const spec = JSON.parse(request[2]);
-    assert.deepEqual(spec.argv, [codex, 'resume', id]);
+    assert.deepEqual(spec.argv, [codex, '--no-daemon', 'resume', id]);
     assert.equal(spec.folder, cwd);
     assert.equal(spec.place, 'tab');
 
@@ -155,7 +160,7 @@ console.log(JSON.stringify({ terminal: 't1', tab: 'x' }));
 
     const focused = await run(id, {
       FAKE_HC_LIVE: '1',
-      FAKE_PS_OUTPUT: processTable([10, 1, 'zsh', '-zsh'], [11, 10, 'codex', 'codex resume ' + id]),
+      FAKE_PS_OUTPUT: processTable([10, 1, 'zsh', '-zsh'], [11, 10, 'codex', 'codex --no-daemon resume ' + id]),
     });
     assert.equal(focused.status, 0, JSON.stringify(focused));
     assert.equal(focused.code, 'FOCUSED');
@@ -168,6 +173,25 @@ console.log(JSON.stringify({ terminal: 't1', tab: 'x' }));
     assert.equal(external.status, 1, JSON.stringify(external));
     assert.equal(external.code, 'UNCONFIRMED');
     assert.equal(requests().length, 3, '외부 Codex 세션을 식별할 수 없으면 탭을 열지 않는다');
+
+    const first = await run(failedHcId, { FAKE_EMPTY_SPACE: '1' });
+    assert.equal(first.code, 'OPENED');
+    const [command, action, payload] = requests().at(-1);
+    assert.deepEqual([command, action], ['do', 'space.new']);
+    const firstSpace = JSON.parse(payload);
+    assert.equal(firstSpace.machine, '');
+    assert.equal(firstSpace.folder, cwd);
+    assert.deepEqual(firstSpace.argv, [codex, '--no-daemon', 'resume', failedHcId]);
+
+    const sessions = join(root, '.claude', 'sessions');
+    mkdirSync(sessions, { recursive: true });
+    writeFileSync(join(sessions, 'live.json'), JSON.stringify({ sessionId: claudeId, pid: process.pid, cwd }));
+    const native = await run(claudeId, {
+      FAKE_HC_LIVE: 'claude', FAKE_PID: String(process.pid), FAKE_SID: claudeId,
+      FAKE_PS_OUTPUT: processTable([10, 1, 'zsh', '-zsh'], [process.pid, 10, '2.1.322', '2.1.322 --resume ' + claudeId]),
+    });
+    assert.equal(native.code, 'FOCUSED');
+    assert.deepEqual(requests().at(-1), ['do', 'agent.focus', JSON.stringify({ terminal: 't2' })]);
 
     console.log('PASS  macOS 재개 인자·작업 폴더·중복 열기·확정 탭 이동·미확정 세션 거부');
     console.log('합계: PASS 1 / FAIL 0');

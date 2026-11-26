@@ -46,7 +46,7 @@ export function launchMacSession(row, cwd, name) {
   } catch {
     return { ok: false, code: 'STATE_ERROR', message: '중복 실행 방지 기록을 저장하지 못했습니다.' };
   }
-  const result = openTab({ argv: [path, codex ? 'resume' : '--resume', row.sid], folder: cwd, place: 'tab', name });
+  const result = openTab({ argv: codex ? [path, '--no-daemon', 'resume', row.sid] : [path, '--resume', row.sid], folder: cwd, place: 'tab', name });
   if (!result.ok) return { ok: false, code: 'OPEN_FAILED', message: result.detail || 'Herdr에서 새 탭을 열지 못했습니다.' };
   return { ok: true, code: 'OPENED', message: 'Herdr에 이어 열기를 요청했습니다.', terminal: result.terminal || '', tab: result.tab || '', cwd };
 }

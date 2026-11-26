@@ -15,7 +15,7 @@ const configDir = () => {
 export const sessDir = () => join(configDir(), 'sessions');
 export const projDir = () => join(configDir(), 'projects');
 const MIN_BYTES = 20 * 1024;           // 이보다 작은 기록은 훅/자동 호출이 남긴 껍데기로 보고 기본 숨김
-const MODEL_RE = /"model":"(claude-[a-z0-9-]+)"/g;
+const MODEL_RE = /"model"\s*:\s*"(claude-[a-z0-9-]+)"/g;
 const AUTO_RE = /^(Analyze this conversation and determine|Below is a conversation log from a Claud)/i;
 // 성능: remember 플러그인이 임시 작업 폴더마다 기록 폴더를 하나씩 만들어 수천 개가 쌓이고(실측 2,649개 중 2,562개, 안의 기록은 61개뿐),
 // double-shot-latte 자동 도우미는 한 폴더에 2,279개(계속 증가)를 남긴다. 둘 다 기본 목록에서 숨겨지므로 폴더째 읽지 않는다.
@@ -50,7 +50,7 @@ function scanWholeFile(full, scan, seen) {
 }
 
 export function findCwd(full, projName, fallback) {
-  const re = /"cwd":"((?:[^"\\]|\\.)*)"/g;
+  const re = /"cwd"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
   const seen = new Set();
   const scan = (text) => { re.lastIndex = 0; let m; while ((m = re.exec(text))) seen.add(unescapeJson(m[1])); };
   const pick = () => [...seen].find((c) => encodeProj(c) === projName);
@@ -129,10 +129,10 @@ function buildRow(c, { lv, hm, all }) {
   const hide = !all && !hm && !(lv && lv.entrypoint !== 'sdk-cli');
   if (hide && /double-shot-latte/i.test(c.proj)) return null;               // 1) 프로젝트 폴더 이름만으로 판정(파일을 읽지 않음)
   const tail = readChunk(c.full, 256 * 1024, true);                          // 2) 뒤쪽만 읽어 제목·마지막 질문으로 판정
-  const lastPrompt = lastMatch(tail, /"lastPrompt":"((?:[^"\\]|\\.)*)"/g) || (all ? latestUserPrompt(tail) : '');
-  let title = lastMatch(tail, /"aiTitle":"((?:[^"\\]|\\.)*)"/g) || '';
+  const lastPrompt = lastMatch(tail, /"lastPrompt"\s*:\s*"((?:[^"\\]|\\.)*)"/g) || (all ? latestUserPrompt(tail) : '');
+  let title = lastMatch(tail, /"aiTitle"\s*:\s*"((?:[^"\\]|\\.)*)"/g) || '';
   if (hide && (AUTO_RE.test(title) || AUTO_RE.test(lastPrompt))) return null;
-  if (!title) title = lastMatch(readChunk(c.full, 64 * 1024, false), /"aiTitle":"((?:[^"\\]|\\.)*)"/g) || '';
+  if (!title) title = lastMatch(readChunk(c.full, 64 * 1024, false), /"aiTitle"\s*:\s*"((?:[^"\\]|\\.)*)"/g) || '';
   if (hide && !title && !lastPrompt) return null;                            // 3) 제목도 질문도 없으면 빈 기록
   const cwd = findCwd(c.full, c.proj, lv?.cwd);                              // 4) 통과한 것만 폴더·모델을 찾는다
   if (hide && /double-shot-latte/i.test(cwd)) return null;
@@ -154,14 +154,17 @@ function buildRow(c, { lv, hm, all }) {
 export function collectClaude({ days, limit, all, live, map }) {
   const cands = listCandidates({ live, map, cutoff: Date.now() - days * 86400000, all });
   const rows = [];
+  const listed = new Set();
   let extra = 0;
   for (const c of cands) {
+    if (listed.has(c.sid)) continue;
     const lv = live.get(c.sid), hm = map.get(c.sid);
     const must = !!(lv || hm);
     if (!must && extra >= limit) continue;                       // 일반 세션은 limit 개까지만
     const row = buildRow(c, { lv, hm, all });
     if (!row) continue;
     if (!must) extra++;
+    listed.add(c.sid);
     rows.push(row);
   }
   return rows;

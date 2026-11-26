@@ -4,7 +4,7 @@
 
 > **In one sentence**: A Windows tool that helps you pick up your AI conversations (Claude Code · Codex) again from a list after the computer shuts down or a Herdr window suddenly closes, and that also fixes the "Herdr never updates while it stays open" problem.
 
-- Document version: kit 1.1.3 · written 2026-11-20 · last updated 2026-11-26
+- Document version: kit 1.1.4 · written 2026-11-20 · last updated 2026-11-26
 - This document is written so that **people who are new to computers and AI tools** can follow it. If you meet an unfamiliar word, read [2. Glossary](#2-glossary) first.
 - The same content is in four files: `README.md` (Korean), `README.en.md` (English), `README.html` (Korean, for web browsers) and `README.en.html` (English, for web browsers). The HTML files are generated from the md files, so the content is always the same (see [12. Files and documents](#12-files-and-documents)).
 - Note: the buttons and tabs of the Session Keeper window are in Korean. This document shows the Korean label in `backticks` next to the English meaning.
@@ -540,9 +540,9 @@ node build-readme.mjs         # 3) if you changed README.md / README.en.md, rebu
 ## 11. Update summary
 
 <details>
-<summary><b>Documentation and test update (2026-11-26) — no product code change (kit version stays 1.1.3)</b></summary>
+<summary><b>Kit 1.1.4 (2026-11-26) — documentation and test update (the program is the same as 1.1.3)</b></summary>
 
-- **The product (keeper, install tool, window screen) did not change.** The 5 core files (`session-keeper.ps1`, `sessions.mjs`, `scan-monitors.mjs`, `herdr-launch.ps1`, the watchdog `.vbs`) were confirmed identical to the development copy. So no new release version was made.
+- **The product (keeper, install tool, window screen) did not change.** The 5 core files (`session-keeper.ps1`, `sessions.mjs`, `scan-monitors.mjs`, `herdr-launch.ps1`, the watchdog `.vbs`) were confirmed identical to the development copy. The program files are the same as 1.1.3; only the version number was raised to 1.1.4 to carry the documentation and test fixes. If you already installed it, updating the plugin to 1.1.4 does not change its behavior, and you do not need to run `install.ps1` again.
 - **Newly confirmed (development PC)**: on 2026-11-21 the user added the marketplace and installed 1.1.3 themselves, and a 6-step rehearsal install with the installed tool, using a temporary folder and a temporary task name, passed all 19 checks (the real Session Keeper, task and `keys.json` stayed unchanged). All 3 real PC restarts passed, and in the most recent (2026-11-22) 29 of the 29 windows recorded before the restart were restored (0 failures). This confirms the "real restart restore after the old-pid fix" that the 1.1.3 entry below lists as not yet verified. On 2026-11-26 all 22 test suites, 694 checks, passed again.
 - **Test fixes**: the fixed 0.8-second wait in the app-update test became a state check of up to 10 seconds (reduces intermittent failures; the checks are unchanged), and the summary line format of the old-pid reuse test was fixed.
 - **Security and legal review**: all 14 hostile inputs were blocked, the security tests passed 34/34, and secrets were 0. The `LICENSE` was compared line by line with the official Apache text ([chapter 18](#18-legal-copyright-license-and-commercial-use)). The caution that installing on a drive such as `D:` may inherit write permission for all users is in [15.4](#154-security-cautions).

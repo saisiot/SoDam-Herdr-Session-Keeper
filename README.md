@@ -1,3 +1,27 @@
+# 대화냥줍
+
+<img src="macos/artwork/daehwa-nyangjup-icon-1024.png" alt="새끼 고양이를 들어 올리는 검은 양" width="280">
+
+**맥의 Herdr에서 Claude Code와 Codex 대화를 찾아 원래 작업 폴더에서 이어 엽니다.**
+
+[Forked from SoDam Herdr Session Keeper](https://github.com/sodam-ai/SoDam-Herdr-Session-Keeper)
+
+[English](README.en.md) · [macOS 설치·사용 안내](macos/README.md) · [원본 Windows 안내](#세션키퍼-herdr-session-keeper)
+
+## macOS에서 시작하기
+
+Herdr 앱, `hc`, Node.js 22.13 이상과 사용할 AI CLI가 필요합니다. Codex CLI는 `--no-daemon`을 지원해야 합니다.
+
+```sh
+git clone --branch codex/macos-daehwa-nyangjup https://github.com/saisiot/SoDam-Herdr-Session-Keeper.git
+cd SoDam-Herdr-Session-Keeper
+./macos/install.sh
+```
+
+Herdr의 명령 팔레트에서 **대화냥줍**을 엽니다. 대화 제목이나 작업 폴더로 검색하고 **탭으로 이동** 또는 **이어 열기**를 누릅니다. 재부팅 후 자동 복구는 개발 계획에 있습니다. [macOS 실행 계획](docs/대화냥줍-harness.md)
+
+---
+
 # 세션키퍼 (Herdr Session Keeper)
 
 [한국어](README.md) | [English](README.en.md)

@@ -34,6 +34,9 @@ function inline(s, lang) {
   return s;
 }
 
+// Match the standalone local PNG markup used for the GitHub README cover.
+const coverImage = /^<img src="([a-zA-Z0-9_/-]+\.png)" alt="([^"<>]+)" width="([1-9]\d{0,2})">$/;
+
 // ---------- 블록 ----------
 function render(md, lang) {
   const lines = md.replace(/\r\n/g, '\n').split('\n');
@@ -75,6 +78,14 @@ function render(md, lang) {
   while (i < lines.length) {
     const l = lines[i];
     if (/^\s*$/.test(l)) { i++; continue; }
+    const cover = coverImage.exec(l);
+    if (cover) {
+      const [, src, alt, width] = cover;
+      if (!existsSync(join(ROOT, src))) throw new Error(`README 이미지 없음: ${src}`);
+      out.push(`<p><img src="${src}" alt="${esc(alt)}" width="${width}" style="max-width:100%;height:auto"></p>`);
+      i++;
+      continue;
+    }
     if (/^```/.test(l)) {                                  // 코드 블록
       const body = []; i++;
       while (i < lines.length && !/^```/.test(lines[i])) body.push(lines[i++]);
@@ -169,7 +180,7 @@ function plainFromMd(md) {
     if (inFence) { out.push(line); continue; }
     if (/^\s*$/.test(line) || /^---+\s*$/.test(line)) continue;
     if (/^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?\s*$/.test(line) && line.includes('-') && !/[^\s|:\-]/.test(line)) continue;
-    if (/^<\/?details>\s*$/.test(line.trim())) continue;
+    if (/^<\/?details>\s*$/.test(line.trim()) || coverImage.test(line)) continue;
     const codes = [];
     line = line.replace(/`([^`]+)`/g, (_, c) => { codes.push(c); return `\u0001${codes.length - 1}\u0002`; });
     line = line.replace(/^<summary><b>(.*)<\/b><\/summary>$/, '$1');

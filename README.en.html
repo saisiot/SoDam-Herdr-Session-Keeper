@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Session Keeper (Herdr Session Keeper)</title>
+<title>대화냥줍 (Daehwa Nyangjup)</title>
 <style>
 :root{--bg:#ffffff;--fg:#1f2328;--muted:#59636e;--line:#d1d9e0;--soft:#f6f8fa;--accent:#0b5cad;--code:#eff1f3;--quote:#fff8e1;--quote-line:#e0a800}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1117;--fg:#e6edf3;--muted:#9198a1;--line:#30363d;--soft:#151b23;--accent:#58a6ff;--code:#1c2128;--quote:#2a2410;--quote-line:#9e7c0c}}
@@ -38,6 +38,18 @@ ul,ol{padding-left:1.4em}
 </head>
 <body>
 <main>
+<h1 id="대화냥줍-daehwa-nyangjup">대화냥줍 (Daehwa Nyangjup)</h1>
+<p><img src="macos/artwork/daehwa-nyangjup-icon-1024.png" alt="A black sheep lifting a kitten" width="280" style="max-width:100%;height:auto"></p>
+<p><strong>Find your Claude Code and Codex conversations in Herdr on macOS and resume them in their original working folders.</strong></p>
+<p><a href="https://github.com/sodam-ai/SoDam-Herdr-Session-Keeper">Forked from SoDam Herdr Session Keeper</a></p>
+<p><a href="README.html">한국어</a> · <a href="macos/README.md">macOS installation guide (Korean)</a> · <a href="#session-keeper-herdr-session-keeper">Original Windows guide</a></p>
+<h2 id="get-started-on-macos">Get started on macOS</h2>
+<p>Install the Herdr app, <code>hc</code>, Node.js 22.13 or later, and the AI CLI you want to use. The Codex CLI must support <code>--no-daemon</code>.</p>
+<pre><code>git clone --branch codex/macos-daehwa-nyangjup https://github.com/saisiot/SoDam-Herdr-Session-Keeper.git
+cd SoDam-Herdr-Session-Keeper
+./macos/install.sh</code></pre>
+<p>Open <strong>대화냥줍</strong> from Herdr’s command palette. Search by conversation title or working folder, then choose <strong>탭으로 이동</strong> (go to tab) or <strong>이어 열기</strong> (resume). Automatic recovery after reboot is planned. <a href="docs/대화냥줍-harness.md">macOS implementation plan (Korean)</a></p>
+<hr>
 <h1 id="session-keeper-herdr-session-keeper">Session Keeper (Herdr Session Keeper)</h1>
 <p><a href="README.html">한국어</a> | <a href="README.en.html">English</a></p>
 <blockquote><p><strong>In one sentence</strong>: A Windows tool that helps you pick up your AI conversations (Claude Code · Codex) again from a list after the computer shuts down or a Herdr window suddenly closes, and that also fixes the &quot;Herdr never updates while it stays open&quot; problem.</p></blockquote>

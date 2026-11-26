@@ -1,3 +1,27 @@
+# 대화냥줍 (Daehwa Nyangjup)
+
+<img src="macos/artwork/daehwa-nyangjup-icon-1024.png" alt="A black sheep lifting a kitten" width="280">
+
+**Find your Claude Code and Codex conversations in Herdr on macOS and resume them in their original working folders.**
+
+[Forked from SoDam Herdr Session Keeper](https://github.com/sodam-ai/SoDam-Herdr-Session-Keeper)
+
+[한국어](README.md) · [macOS installation guide (Korean)](macos/README.md) · [Original Windows guide](#session-keeper-herdr-session-keeper)
+
+## Get started on macOS
+
+Install the Herdr app, `hc`, Node.js 22.13 or later, and the AI CLI you want to use. The Codex CLI must support `--no-daemon`.
+
+```sh
+git clone --branch codex/macos-daehwa-nyangjup https://github.com/saisiot/SoDam-Herdr-Session-Keeper.git
+cd SoDam-Herdr-Session-Keeper
+./macos/install.sh
+```
+
+Open **대화냥줍** from Herdr’s command palette. Search by conversation title or working folder, then choose **탭으로 이동** (go to tab) or **이어 열기** (resume). Automatic recovery after reboot is planned. [macOS implementation plan (Korean)](docs/대화냥줍-harness.md)
+
+---
+
 # Session Keeper (Herdr Session Keeper)
 
 [한국어](README.md) | [English](README.en.md)
